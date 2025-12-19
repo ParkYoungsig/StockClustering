@@ -22,23 +22,21 @@ git bash :
 
     cd /d/ai-quant/Project_1/stockClustering 
      => 공백이 포함된 경우 "/d/ai-quant/Project_1/stockClustering"
-                          d:\ai-quant\Project_1\StockClustering
 
     git init  
 
-    git remote add origin https://github.com/ParkYoungsig/StockClustering.git
+    git add .            
+     => git add readme.txt
 
     git status
 
-    git checkout -b youngsig
+    git commit -m "first commit"
 
-    git push
+    git branch -M main
 
-    git push --set-upstream origin youngsig
+    git remote add origin https://github.com/ParkYoungsig/StockClustering.git
 
-    git checkout youngsig     
-
-    git pull origin youngsig
+    git push -u origin main
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -47,7 +45,7 @@ C:\ProgramData\miniconda3\condabin;C:\Program Files (x86)\NAT Service;C:\WINDOWS
 
 C:\Users\ParkYoungSig>d:
 
-D:\>cd \ai-quant\Project_1\StockClustering
+D:\>cd /ai-quant/Project_1/stockClustering
 
 D:\ai-quant\Project_1\StockClustering>git status
 On branch master
