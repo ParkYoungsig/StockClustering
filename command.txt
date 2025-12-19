@@ -1,0 +1,81 @@
+< 최초 >
+
+github 가입
+    https://github.com/
+    이메일에 초대 링크를 따라가서 join
+git 다운로드 설치
+    https://git-scm.com/
+
+아래 작업을 명령프롬프트에서 하려면 설치시에 윈도우 명령프롬프트(cmd.exe)를 default 설정하면됨
+
+이미 gitbash를 기본 명령프롬프트로 설정했다면 윈도우 명령프롬프트를 실행하고 아래 명령을 수행하면 됨
+     "path =%PATH%;C:\Program Files\Git\bin"
+매번 이 작업을 해줘야하기 때문에 불편하므로 
+    설정에서 "시스템 환경변수 편집"으로 검색해서 환경변수 "Path"에 편집버튼 누르고 
+    마지막에 "C:\Program Files\Git\bin"를 추가해주면 됨 
+
+git bash 또는 윈도우즈 명령프롬프트 에서 아래 진행
+
+    cd /d/ai-quant/Project_1/youngsig
+        # 공백이 포함된 경우 "/d/ai-quant/Project_1/youngsig"
+                          d:\ai-quant\Project_1\youngsig
+        # 자신이 원하는 폴더(디렉토리) 생성하여 사용, 동일할 필요는 없음
+        # !!! 경로명에 한글 사용하면 안됨 
+
+    git init  
+
+    # user.name은 원하는대로  
+    git config --global user.name "youngsig2"
+ 
+    # user.email 은 github 로그인에 사용한 이메일 : 반드시 일치해야함
+    git config --global user.email "portable90@naver.com"
+
+    # user.name, user.email 확인
+    git config --list
+
+    # 원격지 리포지터리 지정
+    git remote add origin https://github.com/ParkYoungsig/StockClustering.git
+
+        # 아마 여기에서 보안을 위해 키 전송 및 확인하는 절차 진행했었음.
+
+    # 자신의 브랜치 생성 ("main" 브랜치는 이미 생성되어 있음)
+    git checkout -b youngsig
+        # 나중에 브랜치 이동은 : git checkout  youngsig
+
+    # 상태확인
+    git status
+
+    # 현재 디렉토리에 있는 모든 파일을 branch에 추가 
+    git add .
+
+    # 변경 사항 관리를 위한 시점 생성
+    git commit -m "youngsig"
+
+    # 로컬 브랜치에서 변경된 내용을 원격지에 있는 동일한 브랜치에 반영
+    git push
+
+    # 최초에는 아래 명령을 한번더 해줘야 함
+    git push --set-upstream origin youngsig
+
+    # 브랜치 이동
+    git checkout youngsig    
+
+    # main 브랜치에서 파일 복제하기 
+    git pull original main
+
+-------------------------------------------------------------------------------------
+< 추가/변경된 파일을 github 브랜치에 반영시 >
+
+    cd /d/ai-quant/Project_1/youngsig
+
+    # 브랜치 이동
+    git checkout youngsig    
+
+    # 파일 추가시
+    git add newfile.py
+
+    # 변경 사항 관리를 위한 시점 생성(로컬에 반영)
+    git commit -m "youngsig"
+
+    # 로컬 브랜치에서 변경된 내용을 원격지에 있는 동일한 브랜치에 반영
+    git push
