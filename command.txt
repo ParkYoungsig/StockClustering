@@ -66,7 +66,11 @@ git bash 또는 윈도우즈 명령프롬프트 에서 아래 진행
     # main 브랜치에서 파일 복제하기 
     git pull original main
 
+    # 원격 브랜치가 더 최신인 파일 가져오기
+    git pull origin youngsig
+
 -------------------------------------------------------------------------------------
+
 < 추가/변경된 파일을 github 브랜치에 반영시 >
 
     cd /d/ai-quant/Project_1/youngsig
@@ -83,3 +87,16 @@ git bash 또는 윈도우즈 명령프롬프트 에서 아래 진행
     # 로컬 브랜치에서 변경된 내용을 원격지에 있는 동일한 브랜치에 반영
     git push
 
+-------------------------------------------------------------------------------------
+
+< 원격 브랜치에서 파일 받기 >
+# 삭제되거나 잘못 수정된 파일만을 복구하려는 경우
+
+    # git checkout <가져올_브랜치명> -- <가져올_파일경로>
+    git checkout youngsig -- github.initial.command.txt
+
+    # 다시 반영(필요한 경우)
+    git commit -m "After recovery, Apply Again"
+    git push
+
+    
