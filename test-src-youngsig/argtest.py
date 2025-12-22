@@ -1,9 +1,5 @@
-import sys
 import argparse
 from datetime import datetime, timedelta
-
-# dependencies
-from logging_config import logger
 
 
 def parse_arguments():
@@ -13,7 +9,7 @@ def parse_arguments():
 
     # 입력받을 인자값 설정 (default 값 설정가능)
     parser.add_argument(
-        '--collect', '-c',
+        '--gattering', '-g',
         type=bool,  
         default=False,
         help='True or False'
@@ -45,45 +41,16 @@ def parse_arguments():
     return args
     
 
-def main():
+def main() :
+    # args 에 위의 내용 저장
     
     args = parse_arguments()
-    
+
     # 입력받은 인자값 출력
-    logger.info(f"Data Collect : {args.collect}")
-    logger.info(f"Target Index : {args.target}")
-    logger.info(f"Start Day    : {args.start}")
-    logger.info(f"End Day      : {args.end}")
-
-    # Set logging level
-    if args.verbose: logger.setLevel('DEBUG')
-    
-    if args.collect : 
-        logger.info(f"Start collecting")
-        #
-        logger.info(f"End   collecting")
-    else :
-        try:
-            df = LoadData(StockList)
-
-            kms = KMeans(df)
-            ksm_report = kms.run()
-
-            gmm = GMM(df)
-            gmm_report = gmm.run()
-
-            hdb = HDBScan(df)
-            hdb_report = hdb.run()
-
-            reportAll(kms_report, gmm_report, hdb_report)
-
-        except KeyboardInterrupt:
-            logger.info("Analysis interrupted")
-            sys.exit(1)
-
-        except Exception as e:
-            logger.error(f"Fatal error: {str(e)}", exc_info=True)
-            sys.exit(1)
+    print(args.gattering)
+    print(args.target)
+    print(args.start)
+    print(args.end)
 
 if __name__ == "__main__":
     main()
