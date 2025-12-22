@@ -1,10 +1,21 @@
+# Basic Module
 import sys
 import argparse
 from datetime import datetime, timedelta
 
 # dependencies
+
+# 처리 및 오류 로깅 모듈
 from logging_config import logger
 
+# 데이터 수집 및 가공
+import collect_create_data 
+
+# 군집화 알고리즘별 모듈
+import kmeans_clustering
+import gmm_clustering
+import hdbscan_clustering
+import Agglomerative_clustering 
 
 def parse_arguments():
 
@@ -40,6 +51,12 @@ def parse_arguments():
         help='End date (YYYY-MM-DD), default: today'
     )
 
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Enable verbose logging'
+    )
+
     args    = parser.parse_args()
 
     return args
@@ -56,15 +73,17 @@ def main():
     logger.info(f"Args End Day      : {args.end}")
 
     # # Set logging level
-    # if args.verbose: logger.setLevel('DEBUG')
+    if args.verbose: logger.setLevel('DEBUG')
     
     if args.collect : 
         logger.info(f"Start collecting")
-        #
+        # 여기에 데이터를 가져오는 함수를 넣어주세요
+        # 기초데이터를 가져온 후 추가적인 지표를 생성하는 경우 아래에 해당하는 함수를 별도 호출해주세요.
         logger.info(f"End   collecting")
     else :
         try:
             logger.info(f"Start loading data from collected already")
+            # 사전 수집되고 생성된 데이터를 군집화 모듈에서 사용할 수 있도록 로딩
             # df = LoadData(StockList)
             logger.info(f"End   loading data")
 
