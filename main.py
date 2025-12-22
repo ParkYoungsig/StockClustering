@@ -50,13 +50,13 @@ def main():
     args = parse_arguments()
     
     # 입력받은 인자값 출력
-    logger.info(f"Data Collect : {args.collect}")
-    logger.info(f"Target Index : {args.target}")
-    logger.info(f"Start Day    : {args.start}")
-    logger.info(f"End Day      : {args.end}")
+    logger.info(f"Args Data Collect : {args.collect}")
+    logger.info(f"Args Target Index : {args.target}")
+    logger.info(f"Args Start Day    : {args.start}")
+    logger.info(f"Args End Day      : {args.end}")
 
-    # Set logging level
-    if args.verbose: logger.setLevel('DEBUG')
+    # # Set logging level
+    # if args.verbose: logger.setLevel('DEBUG')
     
     if args.collect : 
         logger.info(f"Start collecting")
@@ -64,18 +64,27 @@ def main():
         logger.info(f"End   collecting")
     else :
         try:
-            df = LoadData(StockList)
+            logger.info(f"Start loading data from collected already")
+            # df = LoadData(StockList)
+            logger.info(f"End   loading data")
 
-            kms = KMeans(df)
-            ksm_report = kms.run()
+            logger.info(f"Start KMeans clustering")
+            # kms = KMeans(df)
+            # ksm_report = kms.run()
+            logger.info(f"End   KMeans clustering")
 
-            gmm = GMM(df)
-            gmm_report = gmm.run()
+            logger.info(f"Start GMM clustering")
+            # gmm = GMM(df)
+            # gmm_report = gmm.run()
+            logger.info(f"End   GMM clustering")
 
-            hdb = HDBScan(df)
-            hdb_report = hdb.run()
+            logger.info(f"Start HDBScan clustering")
+            # hdb = HDBScan(df)
+            # hdb_report = hdb.run()
+            logger.info(f"End   HDBScan clustering")
 
-            reportAll(kms_report, gmm_report, hdb_report)
+            logger.info(f"Gather and Summurize report")
+            # reportAll(kms_report, gmm_report, hdb_report)
 
         except KeyboardInterrupt:
             logger.info("Analysis interrupted")
