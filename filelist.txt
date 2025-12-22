@@ -5,7 +5,7 @@ git-command (폴더)
 test-src-youngsig (폴더)
     - 작성 : 박영식
     - 수정 : 박영식
-데이터 (폴더)    
+데이터 (폴더)   ---- 삭제 
     - 작성 : 최재혁
     - 수정 : 최재혁
 filelist.txt (파일)
