@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import mplfinance as mpf
 
-
+  
 
 class Plotter:
 
