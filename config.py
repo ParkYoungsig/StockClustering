@@ -10,9 +10,9 @@
 # # Risk-free rate (annualized)
 # RISK_FREE_RATE = 0.0  # 0% by default, adjust as needed
 
-# # Output settings
-# OUTPUT_DPI = 150  # Chart resolution
-# OUTPUT_FORMAT = 'png'
+# Output settings
+OUTPUT_DPI = 150  # Chart resolution
+OUTPUT_FORMAT = 'png'
 
 # # Database settings
 # DB_PATH = 'data/qstats_plotter.db'
