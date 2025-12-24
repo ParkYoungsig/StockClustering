@@ -15,6 +15,11 @@ import kmeans_clustering  # noqa
 # 처리 및 오류 로깅 모듈
 from logging_config import logger
 
+# 그리기 모듈
+
+# 데이터 수집 및 가공
+
+# 군집화 알고리즘별 모듈
 # import agglomerative_clustering
 
 
