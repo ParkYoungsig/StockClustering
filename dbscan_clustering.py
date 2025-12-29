@@ -11,7 +11,7 @@ from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
 
 # ---------------------------------------------------------
-# [1] 설정 및 라이브러리 로드
+# [1] 설정 및 라이브러리 로드 (폰트 다운로드 기능 추가)
 # ---------------------------------------------------------
 try:
     from adjustText import adjust_text
@@ -23,23 +23,36 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 class PlotConfig:
-    """차트 스타일 및 폰트 설정"""
+    """차트 스타일 및 폰트 설정 (웹 폰트 다운로드 방식)"""
     @staticmethod
     def set_style():
         sns.set(style='whitegrid')
         plt.rcParams['axes.unicode_minus'] = False
-        PlotConfig._set_korean_font()
+        PlotConfig._load_web_font()
 
     @staticmethod
-    def _set_korean_font():
-        font_candidates = ['NanumBarunGothic', 'Malgun Gothic', 'AppleGothic']
-        colab_font = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'
-        if os.path.exists(colab_font):
-            fm.fontManager.addfont(colab_font)
-            plt.rc('font', family='NanumBarunGothic')
-            return
-        system_font = next((f for f in font_candidates if f in [f.name for f in fm.fontManager.ttflist]), 'sans-serif')
-        plt.rc('font', family=system_font)
+    def _load_web_font():
+        # 나눔고딕 폰트 다운로드 URL (구글 폰트)
+        font_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+        font_name = "NanumGothic.ttf"
+        
+        # 폰트 파일이 없으면 다운로드
+        if not os.path.exists(font_name):
+            try:
+                response = requests.get(font_url)
+                response.raise_for_status()
+                with open(font_name, 'wb') as f:
+                    f.write(response.content)
+            except Exception:
+                pass
+
+        # 폰트가 정상적으로 있으면 Matplotlib에 추가
+        if os.path.exists(font_name):
+            fm.fontManager.addfont(font_name)
+            plt.rc('font', family='NanumGothic')
+        else:
+            # 실패 시 기본 폰트 사용 (한글 깨질 수 있음)
+            plt.rc('font', family='sans-serif')
 
 
 # ---------------------------------------------------------
@@ -50,13 +63,10 @@ class GitHubDataLoader:
         self.base_url = f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}"
 
     def load_date_data(self, date_str: str) -> pd.DataFrame:
-        # 1. 날짜별 파일 로드 시도
         filename_daily = f"{date_str}.csv"
         df = self._fetch_csv(filename_daily)
         
-        # 2. 실패 시 기본 파일 로드 시도
         if df.empty:
-            # 해당 날짜 파일이 없을 경우 fallback
             df = self._fetch_csv('stock_list.csv')
 
         if df.empty:
@@ -143,7 +153,6 @@ class FeatureEngineer:
         x_final = MinMaxScaler().fit_transform(x_norm.reshape(-1,1)).ravel()
         y_final = op_profit.rank(pct=True).values
 
-        # Name 컬럼 보존
         names = df['Name'] if 'Name' in df.columns else pd.Series(index=df.index, data=df.index)
 
         return pd.DataFrame({
@@ -192,7 +201,6 @@ class RallyMapVisualizer:
                     c=feats['Cluster'], cmap='tab10', alpha=0.8, edgecolors='white')
         
         texts = []
-        # 시가총액 상위 10개만 라벨링
         top_stocks = feats.sort_values('MarketCap', ascending=False).head(10)
         for idx, row in top_stocks.iterrows():
             name = row['Name'] if isinstance(row['Name'], str) else str(idx)
