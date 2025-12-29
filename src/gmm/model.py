@@ -225,7 +225,7 @@ def remap_labels(labels: np.ndarray, mapping: Dict[int, int]) -> np.ndarray:
 def bhattacharyya_distance(
     m1: np.ndarray, S1: np.ndarray, m2: np.ndarray, S2: np.ndarray
 ) -> float:
-    """Bhattacharyya distance between two Gaussians (supports diag/full)."""
+    """두 가우시안 분포 간 Bhattacharyya 거리(대각/풀 공분산 지원)."""
 
     # Ensure 2D cov
     S1 = np.diag(S1) if S1.ndim == 1 else S1

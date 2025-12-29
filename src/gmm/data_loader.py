@@ -1,54 +1,73 @@
-"""GMM 파이프라인 입력 데이터 로더.
+"""GMM 파이프라인용 단순 데이터 로더(정돈 버전).
 
-`data_dir` 내 종목별 Parquet 파일을 읽어 연말/월말 스냅샷으로 리샘플링하고,
-필수 피처 유효성 검사 및 간단한 파생변수(NATR) 보강을 수행합니다.
+전제:
+- merged_stock_data.parquet에 Date/Ticker/Name 컬럼이 이미 존재
+- 데이터 정합성 확보를 가정하고 최소한의 방어 로직만 유지
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, Iterable, List, Tuple
 from pathlib import Path
+from typing import Dict, Tuple
 
 import pandas as pd
-
-try:
-    import pyarrow.parquet as pq  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    pq = None
+from datasets import load_dataset  # type: ignore
 
 from src.gmm import config
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DATA_DIR = Path("data")
+HF_REPO_ID = "yumin99/stock-clustering-data"
+HF_MERGED_FILE = "merged_stock_data.parquet"
 
-# 분석에 사용할 기술적 지표 컬럼 정의
 FEATURE_COLUMNS = [
-    "Return_120d",  # 120일 수익률
-    "ADX_14",  # 추세 강도
-    "Disparity_60d",  # 60일 이격도
-    "vol_60_sqrt252",  # 연환산 변동성
-    "NATR",  # 정규화된 ATR (변동성 지표)
-    "Sharpe_60d",  # 샤프 지수
-    "Sortino_60d",  # 소르티노 지수
-    "Zscore_60d",  # 표준점수
-    "RSI_14",  # 상대강도지수
-    "Return_20d",  # 20일 수익률
+    "Return_120d",
+    "ADX_14",
+    "Disparity_60d",
+    "vol_60_sqrt252",
+    "NATR",
+    "Sharpe_60d",
+    "Sortino_60d",
+    "Zscore_60d",
+    "MFI_14",
+    "Return_20d",
 ]
 
-# 최소로 읽을 컬럼 집합 (없는 컬럼은 자동 제외)
-_META_COLUMNS: list[str] = [
-    "Date",
-    "Close",
-    "ATR_14",
-    "Code",
-    "종목코드",
-    "Ticker",
-    "Name",
-]
-DESIRED_COLUMNS: list[str] = sorted(set(FEATURE_COLUMNS + _META_COLUMNS))
+DESIRED_COLUMNS: list[str] = sorted({"Date", "Ticker", "Name", *FEATURE_COLUMNS})
+
+
+def _load_local(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
+    fp = data_dir / HF_MERGED_FILE
+    if not fp.exists():
+        raise FileNotFoundError(fp)
+    df = pd.read_parquet(fp)
+    logger.info(
+        "로컬 로드: %s행, %s컬럼 | Date: %s | Ticker: %s",
+        len(df),
+        len(df.columns),
+        "Date" in df.columns,
+        "Ticker" in df.columns,
+    )
+    logger.debug("로컬 컬럼: %s", list(df.columns))
+    return df
+
+
+def _load_from_huggingface() -> pd.DataFrame:
+    uri = f"hf://datasets/{HF_REPO_ID}/{HF_MERGED_FILE}"
+    ds = load_dataset("parquet", data_files=uri, split="train")
+    df = ds.to_pandas()
+    logger.info(
+        "HF 로드: %s행, %s컬럼 | Date: %s | Ticker: %s",
+        len(df),
+        len(df.columns),
+        "Date" in df.columns,
+        "Ticker" in df.columns,
+    )
+    logger.debug("HF 컬럼: %s", list(df.columns))
+    return df
 
 
 def convert_df_to_snapshots(
@@ -58,310 +77,147 @@ def convert_df_to_snapshots(
     start_year: int = config.START_YEAR,
     end_year: int | None = config.END_YEAR,
 ) -> pd.DataFrame:
-    """DataFrame 입력을 월말/연말 스냅샷으로 변환합니다.
-
-    - Date/Year/Month 보강 후 연도 범위 필터링
-    - freq에 따라 YearMonth 또는 Year 기준으로 중복 제거
-    - Ticker/Name 기본 보강, NATR 보강, 필수 피처 유효성 검사
-    """
-
     if df.empty:
         return df
 
     out = df.copy()
+    # 최소 정규화: 소문자 컬럼명을 표준 컬럼명으로 맞춤
+    col_map = {c.lower(): c for c in out.columns}
+    if "date" in col_map and "Date" not in out.columns:
+        out = out.rename(columns={col_map["date"]: "Date"})
+    if "ticker" in col_map and "Ticker" not in out.columns:
+        out = out.rename(columns={col_map["ticker"]: "Ticker"})
+    if "name" in col_map and "Name" not in out.columns:
+        out = out.rename(columns={col_map["name"]: "Name"})
 
-    # Date 보강
+    # NATR_14만 있을 때 NATR 컬럼 보강
+    if "NATR" not in out.columns and "NATR_14" in out.columns:
+        out["NATR"] = out["NATR_14"]
+
     if "Date" not in out.columns:
-        if isinstance(out.index, pd.DatetimeIndex):
-            out = out.reset_index().rename(columns={"index": "Date"})
-        else:
-            raise ValueError("DataFrame에 Date 컬럼이 없습니다.")
+        raise KeyError(f"Date 컬럼이 없습니다. 사용 가능 컬럼: {list(out.columns)}")
 
     out["Date"] = pd.to_datetime(out["Date"], errors="coerce")
     out = out.dropna(subset=["Date"])
 
-    # Ticker/Name 보강 (전역)
-    if "Ticker" not in out.columns:
-        if "Code" in out.columns:
-            out["Ticker"] = out["Code"]
-        elif "종목코드" in out.columns:
-            out["Ticker"] = out["종목코드"]
-        else:
-            out["Ticker"] = "N/A"
-    if "Name" not in out.columns:
-        out["Name"] = out.get("Ticker", "N/A")
+    out["Year"] = out["Date"].dt.year
+    out["Month"] = out["Date"].dt.month
 
-    # NATR 보강 (데이터에 없을 때만)
-    if "ATR_14" in out.columns and "Close" in out.columns:
-        atr = pd.to_numeric(out["ATR_14"], errors="coerce")
-        close = pd.to_numeric(out["Close"], errors="coerce").mask(lambda x: x <= 0)
-        for natr_col in ("NATR_14", "NATR"):
-            if natr_col in FEATURE_COLUMNS and natr_col not in out.columns:
-                out[natr_col] = (atr / close) * 100
+    year_end = end_year if end_year is not None else 9999
+    out = out.loc[(out["Year"] >= start_year) & (out["Year"] <= year_end)]
 
-    frames: list[pd.DataFrame] = []
+    frames = []
     freq_upper = freq.upper()
-    year_end = end_year if end_year else 9999
-
     for _, g in out.groupby("Ticker"):
-        g = g.copy()
-        g["Year"] = g["Date"].dt.year
-        g["Month"] = g["Date"].dt.month
-
-        mask = (g["Year"] >= start_year) & (g["Year"] <= year_end)
-        g = g.loc[mask].sort_values("Date")
-        if g.empty:
-            continue
-
+        g = g.sort_values("Date")
         if freq_upper == "M":
             g["YearMonth"] = g["Date"].dt.to_period("M")
             g = g.drop_duplicates(subset=["YearMonth"], keep="last")
         else:
             g = g.drop_duplicates(subset=["Year"], keep="last")
-
-        # 필수 피처 유효성 검사
-        needed_cols = [c for c in FEATURE_COLUMNS if c in g.columns]
-        if needed_cols:
-            g = g.dropna(subset=needed_cols)
-        if not g.empty:
-            frames.append(g)
+        # 필수 피처 결측 제거 (존재하는 컬럼만 대상)
+        present_feats = [c for c in FEATURE_COLUMNS if c in g.columns]
+        if present_feats:
+            g = g.dropna(subset=present_feats)
+        frames.append(g)
 
     if not frames:
         return pd.DataFrame()
 
-    return pd.concat(frames, ignore_index=True)
+    snapshots = pd.concat(frames, ignore_index=True)
+
+    return _clean_features(snapshots)
+
+
+def _clean_features(df: pd.DataFrame) -> pd.DataFrame:
+    """피처 결측 제거 후 분위수 클리핑 + z-score 스케일링을 수행합니다.
+
+    클리핑/스케일링은 Ticker-Year 그룹별로 적용해 교차섹션 왜곡을 완화하고,
+    그룹 크기가 작아 분산이 0이면 해당 컬럼은 그대로 둡니다.
+    """
+
+    features = [c for c in FEATURE_COLUMNS if c in df.columns]
+    if not features:
+        return df
+
+    cleaned = df.dropna(subset=features).copy()
+
+    frames = []
+    group_cols = (
+        ["Ticker", "Year"] if {"Ticker", "Year"}.issubset(cleaned.columns) else []
+    )
+
+    if group_cols:
+        for _, g in cleaned.groupby(group_cols):
+            g = _clip_and_scale(g, features)
+            frames.append(g)
+        return pd.concat(frames, ignore_index=True) if frames else cleaned
+
+    # fallback: 전체 기준
+    return _clip_and_scale(cleaned, features)
+
+
+def _clip_and_scale(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+    out = df.copy()
+    for col in features:
+        q = out[col].quantile([0.01, 0.99])
+        q_low = q.iloc[0] if not pd.isna(q.iloc[0]) else None
+        q_hi = q.iloc[1] if not pd.isna(q.iloc[1]) else None
+        if q_low is not None and q_hi is not None:
+            out[col] = out[col].clip(q_low, q_hi)
+
+        mean = out[col].mean()
+        std = out[col].std(ddof=0)
+        if std and std > 0:
+            out[col] = (out[col] - mean) / std
+    return out
 
 
 def load_snapshots(
     data_dir: Path = DEFAULT_DATA_DIR,
-    start_year: int = 2015,
-    end_year: int | None = None,
-    fallback_days: int = 7,
+    start_year: int = config.START_YEAR,
+    end_year: int | None = config.END_YEAR,
+    fallback_days: int = config.FALLBACK_DAYS,  # kept for signature compatibility
     freq: str = config.SNAPSHOT_FREQ,
 ) -> Tuple[pd.DataFrame, Dict]:
-    """
-    개별 종목 파일(Parquet)을 로드하여 시계열 스냅샷 데이터를 구성합니다.
-
-    [기능]
-    - data_dir 내의 모든 .parquet 파일을 탐색합니다.
-    - 각 종목별로 연말(Year-end) 또는 월말(Month-end) 기준의 데이터를 추출합니다.
-    - 필수 Feature 컬럼 존재 여부를 검증하고 결측치를 처리합니다.
-
-    Args:
-        data_dir (Path): 데이터 파일 경로
-        start_year (int): 추출 시작 연도
-        end_year (int | None): 추출 종료 연도 (None인 경우 데이터 끝까지)
-        freq (str): 스냅샷 주기 ("Y": 연말, "M": 월말)
-
-    Returns:
-        Tuple[pd.DataFrame, Dict]:
-            - 병합된 전체 스냅샷 데이터프레임
-            - 로드 통계 정보 (파일 수, 로드된 티커 수, 제외된 티커 등)
-    """
+    """로컬 병합본(우선) 또는 HF 병합본을 읽어 스냅샷 데이터프레임을 반환합니다."""
 
     t0 = time.perf_counter()
 
-    # 1. 파일 목록 탐색 (병합 파일 우선)
-    merged_path = data_dir / "merged_stock_data.parquet"
-    files = list(data_dir.glob("*.parquet"))
-    if merged_path.exists():
-        files = [merged_path]
+    try:
+        df_raw = _load_local(data_dir)
+        source = "local"
+    except FileNotFoundError:
+        logger.info("로컬 병합 파일 없음 → Hugging Face에서 로드")
+        df_raw = _load_from_huggingface()
+        source = "huggingface"
 
-    if not files:
-        raise FileNotFoundError(f"경로에서 parquet 파일을 찾을 수 없습니다: {data_dir}")
+    snapshots_df = convert_df_to_snapshots(
+        df_raw,
+        freq=freq,
+        start_year=start_year,
+        end_year=end_year,
+    )
 
-    logger.info(f"총 {len(files)}개 파일 발견. 데이터 로드 시작 (주기: {freq})...")
+    if snapshots_df.empty:
+        raise ValueError("스냅샷 결과가 비어 있습니다. 입력 데이터를 확인하세요.")
 
-    # 1-1. 병합 파일 처리 경로 (ticker 컬럼 기반 스냅샷 변환)
-    if len(files) == 1 and files[0] == merged_path:
-        fp = merged_path
-        logger.info("병합 파케이 파일 감지: merged_stock_data.parquet (티커별 스냅샷 변환)")
-
-        columns_to_load: Iterable[str] | None = None
-        if pq is not None:
-            try:
-                schema = pq.read_schema(fp)
-                available = set(schema.names)
-                columns_to_load = [c for c in DESIRED_COLUMNS if c in available]
-            except Exception:
-                columns_to_load = None
-
-        df_all = pd.read_parquet(fp, columns=columns_to_load)
-        snapshots_df = convert_df_to_snapshots(
-            df_all,
-            freq=freq,
-            start_year=start_year,
-            end_year=end_year,
-        )
-
-        if snapshots_df.empty:
-            raise ValueError("병합 파일에서 유효한 스냅샷을 생성하지 못했습니다.")
-
-        real_end_year = snapshots_df["Year"].max()
-        stats = {
-            "total_files": 1,
-            "snapshots": len(snapshots_df),
-            "start_year": start_year,
-            "end_year": real_end_year,
-            "files_loaded": 1,
-            "frequency": freq.upper(),
-            "tickers_loaded": sorted(snapshots_df["Ticker"].unique()),
-            "dropped_no_date": [],
-            "dropped_no_valid": [],
-            "dropped_missing_features": [],
-        }
-
-        t_total = time.perf_counter() - t0
-        logger.info(
-            f"병합 파일 로드 완료: 총 {len(snapshots_df)} 건 스냅샷 생성. 소요시간 {t_total:.3f}s"
-        )
-        return snapshots_df, stats
-
-    snapshots = []
-    loaded_tickers: set[str] = set()
-    dropped_no_date: list[str] = []
-    dropped_no_valid: list[str] = []
-    dropped_missing_features: list[str] = []
-
-    for fp in files:
-        t_file_start = time.perf_counter()
-        try:
-            # 2. 파일명 파싱 (Format: Ticker_Name.parquet)
-            stem = fp.stem
-            if "_" in stem:
-                ticker, name = stem.split("_", 1)
-            else:
-                ticker, name = stem, stem
-
-            # 3. 데이터 로드 및 컬럼 정규화 (최소 컬럼만 읽기)
-            columns_to_load: Iterable[str] | None = None
-            if pq is not None:
-                try:
-                    schema = pq.read_schema(fp)
-                    available = set(schema.names)
-                    columns_to_load = [c for c in DESIRED_COLUMNS if c in available]
-                except Exception:
-                    columns_to_load = None
-
-            # 날짜만 먼저 읽어 범위 밖이면 스킵 (가벼운 선필터)
-            if columns_to_load is not None and "Date" in columns_to_load:
-                try:
-                    date_only = pd.read_parquet(fp, columns=["Date"])
-                    date_only["Date"] = pd.to_datetime(
-                        date_only["Date"], errors="coerce"
-                    )
-                    date_only["Year"] = date_only["Date"].dt.year
-                    mask = (date_only["Year"] >= start_year) & (
-                        date_only["Year"] <= (end_year if end_year else 9999)
-                    )
-                    if not mask.any():
-                        dropped_no_valid.append(ticker)
-                        continue
-                except Exception:
-                    # 선필터 실패 시 전체 로드 시도
-                    pass
-
-            df = pd.read_parquet(fp, columns=columns_to_load)
-            df.columns = [
-                c.capitalize() if c.lower() in ["date", "close"] else c
-                for c in df.columns
-            ]
-
-            # 4. 날짜 컬럼 검증
-            if "Date" not in df.columns:
-                if isinstance(df.index, pd.DatetimeIndex):
-                    df = df.reset_index().rename(columns={"index": "Date"})
-                else:
-                    dropped_no_date.append(ticker)
-                    continue
-
-            df["Date"] = pd.to_datetime(df["Date"])
-            df["Year"] = df["Date"].dt.year
-            df["Month"] = df["Date"].dt.month
-
-            # 5. 연도 범위 필터링
-            mask = (df["Year"] >= start_year) & (
-                df["Year"] <= (end_year if end_year else 9999)
-            )
-            df_filtered = df.loc[mask].copy()
-
-            if df_filtered.empty:
-                dropped_no_valid.append(ticker)
-                continue
-
-            # 6. 주기별 스냅샷 추출 (Resampling)
-            df_filtered = df_filtered.sort_values("Date")
-
-            if freq.upper() == "M":
-                # 월말 데이터 추출
-                df_filtered["YearMonth"] = df_filtered["Date"].dt.to_period("M")
-                snapshots_last = df_filtered.drop_duplicates(
-                    subset=["YearMonth"], keep="last"
-                ).copy()
-            else:
-                # 연말 데이터 추출 (기본값)
-                snapshots_last = df_filtered.drop_duplicates(
-                    subset=["Year"], keep="last"
-                ).copy()
-
-            # 메타데이터 추가
-            snapshots_last["Ticker"] = ticker
-            snapshots_last["Name"] = name
-
-            # 파생 변수(NATR) 계산
-            # - 데이터에 없으면 ATR_14/Close로 보강
-            if "ATR_14" in snapshots_last.columns and "Close" in snapshots_last.columns:
-                atr = pd.to_numeric(snapshots_last["ATR_14"], errors="coerce")
-                close = pd.to_numeric(snapshots_last["Close"], errors="coerce")
-                close = close.mask(close <= 0)
-                for natr_col in ("NATR_14", "NATR"):
-                    if (
-                        natr_col in FEATURE_COLUMNS
-                        and natr_col not in snapshots_last.columns
-                    ):
-                        snapshots_last[natr_col] = (atr / close) * 100
-
-            # 유효성 검사 (필수 Feature 확인)
-            needed_cols = [c for c in FEATURE_COLUMNS if c in snapshots_last.columns]
-            valid_rows = snapshots_last.dropna(subset=needed_cols)
-
-            if valid_rows.empty:
-                dropped_missing_features.append(ticker)
-                continue
-
-            snapshots.append(valid_rows)
-            loaded_tickers.add(ticker)
-
-            t_file_elapsed = time.perf_counter() - t_file_start
-            logger.debug(f"파일 로드 완료 ({fp.name}): {t_file_elapsed:.3f}s")
-
-        except Exception as e:
-            logger.warning(f"파일 처리 중 오류 발생 ({fp.name}): {e}")
-            continue
-
-    if not snapshots:
-        raise ValueError("유효한 데이터가 하나도 로드되지 않았습니다.")
-
-    # 최종 병합
-    final_df = pd.concat(snapshots, ignore_index=True)
-    real_end_year = final_df["Year"].max()
-
-    # 로드 통계 집계
     stats = {
-        "total_files": len(files),
-        "snapshots": len(final_df),
+        "source": source,
+        "rows_raw": len(df_raw),
+        "rows_snapshots": len(snapshots_df),
         "start_year": start_year,
-        "end_year": real_end_year,
-        "files_loaded": len(files),
+        "end_year": snapshots_df["Year"].max(),
         "frequency": freq.upper(),
-        "tickers_loaded": sorted(loaded_tickers),
-        "dropped_no_date": sorted(set(dropped_no_date)),
-        "dropped_no_valid": sorted(set(dropped_no_valid)),
-        "dropped_missing_features": sorted(set(dropped_missing_features)),
+        "tickers_loaded": sorted(snapshots_df["Ticker"].unique()),
     }
 
     t_total = time.perf_counter() - t0
     logger.info(
-        f"데이터 로드 완료: 총 {len(final_df)} 건의 스냅샷 생성됨. 소요시간 {t_total:.3f}s"
+        "데이터 로드 완료: %s행 → %s 스냅샷 (%s), %.3fs",
+        len(df_raw),
+        len(snapshots_df),
+        source,
+        t_total,
     )
-    return final_df, stats
+    return snapshots_df, stats

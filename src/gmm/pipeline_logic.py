@@ -1,3 +1,9 @@
+"""GMM 파이프라인 핵심 로직 모듈.
+
+- K 탐색(BIC/안정성)과 학습/라벨 정렬을 담당
+- 오케스트레이터와 리포터 사이의 순수 로직을 모아둠
+"""
+
 import logging
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
