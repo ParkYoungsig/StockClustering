@@ -1,4 +1,4 @@
-"""GMM 클러스터링 실행 진입점."""
+"""GMM 클러스터링 파이프라인 실행 진입점."""
 
 from __future__ import annotations
 
@@ -17,21 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_input_df(df: pd.DataFrame) -> pd.DataFrame:
-    """팀 입력 포맷이 미확정이어도 최대한 안전하게 표준화.
-
-    - MultiIndex(종목코드, date)면 reset_index로 컬럼화
-    - date/Date(유닉스타임 가능) → datetime
-    - Year 없으면 Date로 생성
-    - Ticker 없으면 Code/종목코드로 폴백
-    """
+    """입력 데이터를 안전하게 정규화한다 (인덱스 평탄화, Date 변환, Year/Ticker 보강)."""
 
     out = df
 
-    # 0) MultiIndex → columns
+    # MultiIndex가 있으면 평탄화
     if isinstance(out.index, pd.MultiIndex):
         out = out.reset_index()
 
-    # 1) Date 컬럼 탐색/정규화
+    # Date 컬럼 정규화
     if "Date" not in out.columns:
         for cand in ("date", "DATE", "timestamp", "ts", "time", "Time", "일자", "날짜", "거래일"):
             if cand in out.columns:
@@ -49,11 +43,11 @@ def _normalize_input_df(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 out["Date"] = pd.to_datetime(out["Date"], errors="coerce")
 
-    # 2) Year 생성
+    # Year 파생
     if "Year" not in out.columns and "Date" in out.columns and pd.api.types.is_datetime64_any_dtype(out["Date"]):
         out["Year"] = out["Date"].dt.year
 
-    # 3) Ticker 폴백
+    # Ticker 보강
     if "Ticker" not in out.columns:
         if "Code" in out.columns:
             out["Ticker"] = out["Code"]
@@ -66,7 +60,7 @@ def _normalize_input_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class GMM:
-    """얇은 오케스트레이션 래퍼 (기존 모듈 호출 중심)."""
+    """오케스트레이션된 GMM 파이프라인을 감싸는 얇은 래퍼."""
 
     def __init__(self, df: pd.DataFrame | None = None, results_dir: Path | None = None):
         self.results_dir = results_dir or Path(config.DEFAULT_RESULTS_DIR_NAME)

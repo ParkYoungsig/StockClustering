@@ -195,7 +195,7 @@ def align_clusters(
     curr_covs: np.ndarray,
     metric: str = "bhattacharyya",
 ) -> Dict[int, int]:
-    """이전/현재 중심을 거리 최소화 방식(Hungarian)으로 정렬."""
+    """이전/현재 클러스터 중심을 헝가리안 정렬로 매칭한다."""
 
     def _cov_mat(cov_entry: np.ndarray) -> np.ndarray:
         return np.diag(cov_entry) if cov_entry.ndim == 1 else cov_entry
