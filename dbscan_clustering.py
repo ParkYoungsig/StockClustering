@@ -10,9 +10,6 @@ import seaborn as sns
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
 
-# ---------------------------------------------------------
-# [1] 설정 및 라이브러리 로드 (폰트 다운로드 기능 추가)
-# ---------------------------------------------------------
 try:
     from adjustText import adjust_text
 except ImportError:
@@ -23,7 +20,6 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 class PlotConfig:
-    """차트 스타일 및 폰트 설정 (웹 폰트 다운로드 방식)"""
     @staticmethod
     def set_style():
         sns.set(style='whitegrid')
@@ -32,11 +28,9 @@ class PlotConfig:
 
     @staticmethod
     def _load_web_font():
-        # 나눔고딕 폰트 다운로드 URL (구글 폰트)
         font_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
         font_name = "NanumGothic.ttf"
         
-        # 폰트 파일이 없으면 다운로드
         if not os.path.exists(font_name):
             try:
                 response = requests.get(font_url)
@@ -46,18 +40,12 @@ class PlotConfig:
             except Exception:
                 pass
 
-        # 폰트가 정상적으로 있으면 Matplotlib에 추가
         if os.path.exists(font_name):
             fm.fontManager.addfont(font_name)
             plt.rc('font', family='NanumGothic')
         else:
-            # 실패 시 기본 폰트 사용 (한글 깨질 수 있음)
             plt.rc('font', family='sans-serif')
 
-
-# ---------------------------------------------------------
-# [2] GitHub 데이터 로더
-# ---------------------------------------------------------
 class GitHubDataLoader:
     def __init__(self, repo_owner: str, repo_name: str, branch: str = 'main'):
         self.base_url = f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}"
@@ -110,10 +98,6 @@ class GitHubDataLoader:
 
         return df.set_index('Date')
 
-
-# ---------------------------------------------------------
-# [3] 피처 엔지니어링
-# ---------------------------------------------------------
 class FeatureEngineer:
     @staticmethod
     def create_features(snapshot: pd.DataFrame, mode: str = 'wide') -> pd.DataFrame:
@@ -163,10 +147,6 @@ class FeatureEngineer:
             'Dividend_Yield': dy.values,
         }, index=df.index)
 
-
-# ---------------------------------------------------------
-# [4] 시각화 및 실행
-# ---------------------------------------------------------
 class RallyMapVisualizer:
     def run(self, data: pd.DataFrame, target_date_str: str):
         target_date = pd.to_datetime(target_date_str)
@@ -217,10 +197,6 @@ class RallyMapVisualizer:
         plt.grid(True, alpha=0.3, linestyle='--')
         plt.show()
 
-
-# =========================================================
-# 메인 실행
-# =========================================================
 if __name__ == "__main__":
     PlotConfig.set_style()
     
