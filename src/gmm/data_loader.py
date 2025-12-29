@@ -1,8 +1,4 @@
-"""GMM 파이프라인용 단순 데이터 로더(정돈 버전).
-
-전제:
-- merged_stock_data.parquet에 Date/Ticker/Name 컬럼이 이미 존재
-- 데이터 정합성 확보를 가정하고 최소한의 방어 로직만 유지
+"""GMM 파이프라인용 데이터 로더.
 """
 
 from __future__ import annotations
@@ -39,6 +35,118 @@ FEATURE_COLUMNS = [
 DESIRED_COLUMNS: list[str] = sorted({"Date", "Ticker", "Name", *FEATURE_COLUMNS})
 
 
+def _reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """참고 스크립트의 컬럼 우선순위를 그대로 적용."""
+
+    priority_cols = [
+        "Date",
+        "Ticker",
+        "Code",
+        "Name",
+        "종목명",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+        "Adj Close",
+        "시가",
+        "고가",
+        "저가",
+        "종가",
+        "거래량",
+        "Change",
+        "Chg_Pct",
+        "등락률",
+        "Marcap",
+        "상장시가총액",
+    ]
+    existing = [c for c in priority_cols if c in df.columns]
+    remaining = [c for c in df.columns if c not in existing]
+    return df[existing + remaining]
+
+
+def _ensure_date_ticker(df: pd.DataFrame, filename_stem: str) -> pd.DataFrame:
+    """인덱스/컬럼 상태와 상관없이 Date, Ticker를 강제 생성 (참고 스크립트 동일)."""
+
+    if isinstance(df.index, pd.MultiIndex):
+        df = df.reset_index()
+        rename_map: Dict[str, str] = {}
+        level_names = list(df.columns[:2])
+        if len(level_names) >= 1:
+            rename_map[level_names[0]] = "Date"
+        if len(level_names) >= 2:
+            rename_map[level_names[1]] = "Ticker"
+        if rename_map:
+            df = df.rename(columns=rename_map)
+    else:
+        if "Date" not in df.columns:
+            df = df.reset_index()
+        if "index" in df.columns:
+            df = df.rename(columns={"index": "Date"})
+
+    if "Ticker" not in df.columns:
+        if "_" in filename_stem:
+            code_str = filename_stem.split("_", 1)[0]
+        else:
+            code_str = filename_stem
+        df["Ticker"] = code_str
+
+    return df
+
+
+def _merge_local_raw_files(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
+    """로컬 원본 parquet들을 참고 스크립트 방식으로 병합하여 메모리로 반환.
+
+    - 멀티인덱스는 풀어서 Date/Ticker를 강제 생성
+    - 종목명/종목코드 컬럼을 Name/Ticker로 표준화
+    - 컬럼 순서를 참고 스크립트와 동일하게 정렬
+    - merged_stock_data.parquet과 merged_original_index.parquet은 스킵
+    """
+
+    # 병합본 파일은 건너뛰고 원본만 병합
+    skip_names = {HF_MERGED_FILE}
+    files = [f for f in data_dir.glob("*.parquet") if f.name not in skip_names]
+
+    if not files:
+        raise FileNotFoundError("로컬 원본 parquet 파일이 없습니다.")
+
+    frames_flat: list[pd.DataFrame] = []
+
+    for idx, file in enumerate(files):
+        try:
+            df = pd.read_parquet(file)
+            df_flat = df.copy()
+
+            # 1) 컬럼명 변경 (종목명/종목코드 → Name/Ticker)
+            df_flat = df_flat.rename(columns={"종목명": "Name", "종목코드": "Ticker"})
+
+            # 2) Date/Ticker 강제 생성 (멀티인덱스 포함)
+            df_flat = _ensure_date_ticker(df_flat, file.stem)
+
+            # 3) 컬럼 순서 정렬
+            df_flat = _reorder_columns(df_flat)
+
+            frames_flat.append(df_flat)
+
+            if (idx + 1) % 100 == 0:
+                logger.info("원본 병합 진행 중: %s/%s", idx + 1, len(files))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("원본 병합 중 오류 (%s): %s", file.name, e)
+
+    if not frames_flat:
+        raise ValueError("원본 병합 결과가 비었습니다.")
+
+    merged_flat = pd.concat(frames_flat, ignore_index=True)
+    logger.info(
+        "로컬 원본 병합 완료: %s행, Date=%s, Ticker=%s",
+        len(merged_flat),
+        "Date" in merged_flat.columns,
+        "Ticker" in merged_flat.columns,
+    )
+    return merged_flat
+
+
 def _load_local(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
     fp = data_dir / HF_MERGED_FILE
     if not fp.exists():
@@ -67,6 +175,21 @@ def _load_from_huggingface() -> pd.DataFrame:
         "Ticker" in df.columns,
     )
     logger.debug("HF 컬럼: %s", list(df.columns))
+    return df
+
+
+def _load_local_raw_merged(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
+    """완성본이 없을 때 로컬 원본 parquet을 즉석 병합하여 로드."""
+
+    df = _merge_local_raw_files(data_dir)
+    logger.info(
+        "로컬 원본 병합 로드: %s행, %s컬럼 | Date: %s | Ticker: %s",
+        len(df),
+        len(df.columns),
+        "Date" in df.columns,
+        "Ticker" in df.columns,
+    )
+    logger.debug("로컬 원본 병합 컬럼: %s", list(df.columns))
     return df
 
 
@@ -180,17 +303,29 @@ def load_snapshots(
     fallback_days: int = config.FALLBACK_DAYS,  # kept for signature compatibility
     freq: str = config.SNAPSHOT_FREQ,
 ) -> Tuple[pd.DataFrame, Dict]:
-    """로컬 병합본(우선) 또는 HF 병합본을 읽어 스냅샷 데이터프레임을 반환합니다."""
+    """3단 방어 로직으로 스냅샷 데이터프레임을 반환합니다.
+
+    우선순위:
+    1) 로컬 완성본 merged_stock_data.parquet
+    2) 로컬 원본 parquet 즉석 병합 (_merge_local_raw_files)
+    3) Hugging Face 병합본 다운로드
+    """
 
     t0 = time.perf_counter()
+    source = ""
 
     try:
         df_raw = _load_local(data_dir)
-        source = "local"
+        source = "local-merged"
     except FileNotFoundError:
-        logger.info("로컬 병합 파일 없음 → Hugging Face에서 로드")
-        df_raw = _load_from_huggingface()
-        source = "huggingface"
+        logger.info("로컬 완성본 없음 → 로컬 원본 병합 시도")
+        try:
+            df_raw = _load_local_raw_merged(data_dir)
+            source = "local-raw-merged"
+        except FileNotFoundError:
+            logger.info("로컬 원본 파일 없음 → Hugging Face에서 로드")
+            df_raw = _load_from_huggingface()
+            source = "huggingface"
 
     snapshots_df = convert_df_to_snapshots(
         df_raw,
