@@ -233,3 +233,4 @@ if __name__ == "__main__":
         viz.run(df)
     else:
         print("데이터를 불러오지 못했습니다.")
+
