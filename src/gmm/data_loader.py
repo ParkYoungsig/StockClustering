@@ -39,7 +39,15 @@ FEATURE_COLUMNS = [
 ]
 
 # 최소로 읽을 컬럼 집합 (없는 컬럼은 자동 제외)
-_META_COLUMNS: list[str] = ["Date", "Close", "ATR_14", "Code", "종목코드", "Ticker", "Name"]
+_META_COLUMNS: list[str] = [
+    "Date",
+    "Close",
+    "ATR_14",
+    "Code",
+    "종목코드",
+    "Ticker",
+    "Name",
+]
 DESIRED_COLUMNS: list[str] = sorted(set(FEATURE_COLUMNS + _META_COLUMNS))
 
 
@@ -153,12 +161,61 @@ def load_snapshots(
 
     t0 = time.perf_counter()
 
-    # 1. 파일 목록 탐색
+    # 1. 파일 목록 탐색 (병합 파일 우선)
+    merged_path = data_dir / "merged_stock_data.parquet"
     files = list(data_dir.glob("*.parquet"))
+    if merged_path.exists():
+        files = [merged_path]
+
     if not files:
         raise FileNotFoundError(f"경로에서 parquet 파일을 찾을 수 없습니다: {data_dir}")
 
     logger.info(f"총 {len(files)}개 파일 발견. 데이터 로드 시작 (주기: {freq})...")
+
+    # 1-1. 병합 파일 처리 경로 (ticker 컬럼 기반 스냅샷 변환)
+    if len(files) == 1 and files[0] == merged_path:
+        fp = merged_path
+        logger.info("병합 파케이 파일 감지: merged_stock_data.parquet (티커별 스냅샷 변환)")
+
+        columns_to_load: Iterable[str] | None = None
+        if pq is not None:
+            try:
+                schema = pq.read_schema(fp)
+                available = set(schema.names)
+                columns_to_load = [c for c in DESIRED_COLUMNS if c in available]
+            except Exception:
+                columns_to_load = None
+
+        df_all = pd.read_parquet(fp, columns=columns_to_load)
+        snapshots_df = convert_df_to_snapshots(
+            df_all,
+            freq=freq,
+            start_year=start_year,
+            end_year=end_year,
+        )
+
+        if snapshots_df.empty:
+            raise ValueError("병합 파일에서 유효한 스냅샷을 생성하지 못했습니다.")
+
+        real_end_year = snapshots_df["Year"].max()
+        stats = {
+            "total_files": 1,
+            "snapshots": len(snapshots_df),
+            "start_year": start_year,
+            "end_year": real_end_year,
+            "files_loaded": 1,
+            "frequency": freq.upper(),
+            "tickers_loaded": sorted(snapshots_df["Ticker"].unique()),
+            "dropped_no_date": [],
+            "dropped_no_valid": [],
+            "dropped_missing_features": [],
+        }
+
+        t_total = time.perf_counter() - t0
+        logger.info(
+            f"병합 파일 로드 완료: 총 {len(snapshots_df)} 건 스냅샷 생성. 소요시간 {t_total:.3f}s"
+        )
+        return snapshots_df, stats
 
     snapshots = []
     loaded_tickers: set[str] = set()
@@ -190,7 +247,9 @@ def load_snapshots(
             if columns_to_load is not None and "Date" in columns_to_load:
                 try:
                     date_only = pd.read_parquet(fp, columns=["Date"])
-                    date_only["Date"] = pd.to_datetime(date_only["Date"], errors="coerce")
+                    date_only["Date"] = pd.to_datetime(
+                        date_only["Date"], errors="coerce"
+                    )
                     date_only["Year"] = date_only["Date"].dt.year
                     mask = (date_only["Year"] >= start_year) & (
                         date_only["Year"] <= (end_year if end_year else 9999)

@@ -24,11 +24,15 @@ def get_latest_year_frame(
         raise ValueError("라벨 정보가 없습니다.")
 
     available_years = sorted(labels_per_year.keys())
-    selected_year = target_year if target_year in labels_per_year else available_years[-1]
+    selected_year = (
+        target_year if target_year in labels_per_year else available_years[-1]
+    )
 
     if selected_year != target_year:
         logger.warning(
-            "최신 연도(%s)에 라벨 없음 → 가장 최근 사용 가능 연도(%s)로 대체", target_year, selected_year
+            "최신 연도(%s)에 라벨 없음 → 가장 최근 사용 가능 연도(%s)로 대체",
+            target_year,
+            selected_year,
         )
 
     mask_year = df_clean["Year"] == selected_year

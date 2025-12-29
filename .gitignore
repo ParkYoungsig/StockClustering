@@ -1,5 +1,5 @@
 # 1. 데이터 파일 절대 금지
-data/
+
 *.parquet
 *.csv
 *.xlsx

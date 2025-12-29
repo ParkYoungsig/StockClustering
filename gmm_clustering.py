@@ -27,7 +27,17 @@ def _normalize_input_df(df: pd.DataFrame) -> pd.DataFrame:
 
     # Date 컬럼 정규화
     if "Date" not in out.columns:
-        for cand in ("date", "DATE", "timestamp", "ts", "time", "Time", "일자", "날짜", "거래일"):
+        for cand in (
+            "date",
+            "DATE",
+            "timestamp",
+            "ts",
+            "time",
+            "Time",
+            "일자",
+            "날짜",
+            "거래일",
+        ):
             if cand in out.columns:
                 out = out.rename(columns={cand: "Date"})
                 break
@@ -44,7 +54,11 @@ def _normalize_input_df(df: pd.DataFrame) -> pd.DataFrame:
                 out["Date"] = pd.to_datetime(out["Date"], errors="coerce")
 
     # Year 파생
-    if "Year" not in out.columns and "Date" in out.columns and pd.api.types.is_datetime64_any_dtype(out["Date"]):
+    if (
+        "Year" not in out.columns
+        and "Date" in out.columns
+        and pd.api.types.is_datetime64_any_dtype(out["Date"])
+    ):
         out["Year"] = out["Date"].dt.year
 
     # Ticker 보강
