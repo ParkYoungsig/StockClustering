@@ -93,8 +93,8 @@ def main():
             logger.info(f"End   KMeans clustering")
 
             logger.info(f"Start GMM clustering")
-            # gmm = GMM(df)
-            # gmm_report = gmm.run()
+            #gmm = gmm_clustering.GMM(df)
+            #gmm_report = gmm.run()
             logger.info(f"End   GMM clustering")
 
             logger.info(f"Start HDBScan clustering")
