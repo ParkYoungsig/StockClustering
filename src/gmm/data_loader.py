@@ -1,5 +1,4 @@
-"""GMM 파이프라인용 데이터 로더.
-"""
+"""GMM 파이프라인용 데이터 로더."""
 
 from __future__ import annotations
 
@@ -31,8 +30,6 @@ FEATURE_COLUMNS = [
     "MFI_14",
     "Return_20d",
 ]
-
-DESIRED_COLUMNS: list[str] = sorted({"Date", "Ticker", "Name", *FEATURE_COLUMNS})
 
 
 def _reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -248,6 +245,15 @@ def convert_df_to_snapshots(
         return pd.DataFrame()
 
     snapshots = pd.concat(frames, ignore_index=True)
+
+    # 스냅샷 기준 컬럼 일관화: 월 스냅샷이면 YearMonth/Month를 명시적으로 포함
+    snapshots["Year"] = snapshots["Date"].dt.year
+    snapshots["Month"] = snapshots["Date"].dt.month
+    if freq_upper == "M":
+        snapshots["YearMonth"] = snapshots["Date"].dt.to_period("M").astype(str)
+    elif "YearMonth" in snapshots.columns:
+        # 연말 스냅샷만 있는 경우 혼선을 막기 위해 YearMonth 제거
+        snapshots = snapshots.drop(columns=["YearMonth"])
 
     return _clean_features(snapshots)
 

@@ -24,6 +24,22 @@ def _cluster_label(cid: int, cluster_names: Optional[Dict[int, str]]) -> str:
     )
 
 
+def _format_time_tag(row: pd.Series) -> str | None:
+    """연말이면 연도만, 월말 스냅샷이면 연-월(YearMonth 기준)로 포맷."""
+
+    ym = row.get("YearMonth")
+    if pd.notna(ym):
+        return str(ym)
+
+    year = row.get("Year")
+    if pd.notna(year):
+        try:
+            return str(int(year))
+        except Exception:
+            return str(year)
+    return None
+
+
 def write_text_report(
     output_path: Path,
     load_stats: Dict,
@@ -77,7 +93,9 @@ def write_text_report(
         # 피처 중복 제거/정리 요약 (상관/저분산)
         feature_candidates_total = prep_stats.get("feature_candidates_total")
         feature_candidates_base = prep_stats.get("feature_candidates_base") or []
-        feature_candidates_extra = prep_stats.get("feature_candidates_extra_numeric") or []
+        feature_candidates_extra = (
+            prep_stats.get("feature_candidates_extra_numeric") or []
+        )
         feature_cols_input_count = prep_stats.get("feature_cols_input_count")
         feature_cols_used = prep_stats.get("feature_cols_used") or []
         removed_low_var = prep_stats.get("removed_low_variance") or []
@@ -97,14 +115,12 @@ def write_text_report(
             f.write("피처 정리(자동 중복 제거):\n")
             if feature_candidates_total is not None:
                 f.write(f"  후보 전체: {int(feature_candidates_total)}\n")
-                f.write(
-                    f"    - 기본 FEATURE_COLUMNS: {len(feature_candidates_base)}\n"
-                )
-                f.write(
-                    f"    - 추가 numeric 후보: {len(feature_candidates_extra)}\n"
-                )
+                f.write(f"    - 기본 FEATURE_COLUMNS: {len(feature_candidates_base)}\n")
+                f.write(f"    - 추가 numeric 후보: {len(feature_candidates_extra)}\n")
             if feature_cols_input_count is not None:
-                f.write(f"  결측률 필터 통과(전처리 입력): {int(feature_cols_input_count)}\n")
+                f.write(
+                    f"  결측률 필터 통과(전처리 입력): {int(feature_cols_input_count)}\n"
+                )
             if feature_cols_used:
                 f.write(f"  최종 사용 피처 수: {len(feature_cols_used)}\n")
             if max_missing_ratio is not None:
@@ -291,36 +307,117 @@ def write_text_report(
             f.write("\n")
 
 
-def build_cluster_members(df_latest: pd.DataFrame) -> Dict[int, List[str]]:
-    """리포트 작성을 위해 각 클러스터에 속한 종목 명단을 포맷팅합니다."""
+def build_cluster_members_all_years(
+    df_clean: pd.DataFrame, labels_per_year: Dict[int, pd.Series]
+) -> Dict[int, List[str]]:
+    """전 기간(연말/월말) 클러스터 종목 명단을 연/월 태그와 함께 반환."""
 
-    # Ticker가 없으면 Code를 그대로 사용해 Ticker 생성
-    if "Ticker" not in df_latest.columns and "Code" in df_latest.columns:
-        df_latest = df_latest.copy()
-        df_latest["Ticker"] = df_latest["Code"]
+    if df_clean is None or df_clean.empty or not labels_per_year:
+        return {}
 
     def _format_name(row: pd.Series) -> str:
         ticker = row.get("Ticker")
         code = row.get("Code")
         name = str(row.get("Name", "")).strip()
         base = ticker if pd.notna(ticker) else code if pd.notna(code) else "N/A"
+        time_tag = _format_time_tag(row)
+
+        parts = []
         if name and name.lower() != "nan":
-            return f"{base} ({name})"
+            parts.append(name)
+        if time_tag:
+            parts.append(str(time_tag))
+
+        if parts:
+            return f"{base} ({', '.join(parts)})"
         return str(base)
 
     members: Dict[int, List[str]] = {}
-    for cid, grp in df_latest.groupby("cluster"):
+
+    for year, labels in labels_per_year.items():
+        mask = df_clean["Year"] == int(year)
+        if mask.sum() == 0:
+            continue
+        df_year = df_clean.loc[mask].copy()
+        df_year["cluster"] = labels
+
+        # Ticker 보강
+        if "Ticker" not in df_year.columns and "Code" in df_year.columns:
+            df_year["Ticker"] = df_year["Code"]
+
         sort_col = (
             "Ticker"
-            if "Ticker" in grp.columns
-            else ("Code" if "Code" in grp.columns else None)
+            if "Ticker" in df_year.columns
+            else ("Code" if "Code" in df_year.columns else None)
         )
-        grp_sorted = grp.sort_values(by=sort_col) if sort_col else grp
-        # 중복 제거: 순서 보존
-        names = [_format_name(r) for _, r in grp_sorted.iterrows()]
-        unique_names = list(dict.fromkeys(names))
-        members[cid] = unique_names
+
+        for cid, grp in df_year.groupby("cluster"):
+            grp_sorted = grp.sort_values(by=sort_col) if sort_col else grp
+            names = [_format_name(r) for _, r in grp_sorted.iterrows()]
+            unique_names = list(dict.fromkeys(names))
+            members.setdefault(cid, []).extend(unique_names)
+
+    # 클러스터별로 중복 제거(전 기간 기준, 순서 보존)
+    for cid, lst in members.items():
+        members[cid] = list(dict.fromkeys(lst))
+
     return members
+
+
+def build_cluster_members_by_year(
+    df_clean: pd.DataFrame, labels_per_year: Dict[int, pd.Series]
+) -> Dict[int, Dict[int, List[str]]]:
+    """연도별 클러스터 멤버를 연/월 태그와 함께 반환합니다."""
+
+    if df_clean is None or df_clean.empty or not labels_per_year:
+        return {}
+
+    out: Dict[int, Dict[int, List[str]]] = {}
+
+    def _format_name(row: pd.Series) -> str:
+        ticker = row.get("Ticker")
+        code = row.get("Code")
+        name = str(row.get("Name", "")).strip()
+        base = ticker if pd.notna(ticker) else code if pd.notna(code) else "N/A"
+        time_tag = _format_time_tag(row)
+
+        parts = []
+        if name and name.lower() != "nan":
+            parts.append(name)
+        if time_tag:
+            parts.append(str(time_tag))
+
+        if parts:
+            return f"{base} ({', '.join(parts)})"
+        return str(base)
+
+    for year, labels in labels_per_year.items():
+        mask = df_clean["Year"] == int(year)
+        if mask.sum() == 0:
+            continue
+        df_year = df_clean.loc[mask].copy()
+        df_year["cluster"] = labels
+
+        if "Ticker" not in df_year.columns and "Code" in df_year.columns:
+            df_year["Ticker"] = df_year["Code"]
+
+        sort_col = (
+            "Ticker"
+            if "Ticker" in df_year.columns
+            else ("Code" if "Code" in df_year.columns else None)
+        )
+
+        year_map: Dict[int, List[str]] = {}
+        for cid, grp in df_year.groupby("cluster"):
+            grp_sorted = grp.sort_values(by=sort_col) if sort_col else grp
+            names = [_format_name(r) for _, r in grp_sorted.iterrows()]
+            unique_names = list(dict.fromkeys(names))
+            year_map[int(cid)] = unique_names
+
+        if year_map:
+            out[int(year)] = year_map
+
+    return out
 
 
 def build_cluster_top_tickers(
@@ -331,12 +428,36 @@ def build_cluster_top_tickers(
     if df_latest is None or df_latest.empty:
         return {}
 
-    id_col = "Ticker" if "Ticker" in df_latest.columns else ("Code" if "Code" in df_latest.columns else None)
+    id_col = (
+        "Ticker"
+        if "Ticker" in df_latest.columns
+        else ("Code" if "Code" in df_latest.columns else None)
+    )
     if id_col is None or "cluster" not in df_latest.columns:
         return {}
 
     out: Dict[int, List[str]] = {}
     for cid, grp in df_latest.groupby("cluster"):
         vc = grp[id_col].astype(str).value_counts().head(top_n)
-        out[int(cid)] = [f"{k} ({int(v)})" for k, v in vc.items()]
+
+        rows_by_id = {k: grp[grp[id_col].astype(str) == k] for k in vc.index}
+
+        def _tag_for_id(k: str) -> str | None:
+            rows = rows_by_id.get(k)
+            if rows is None or rows.empty:
+                return None
+            if "Date" in rows.columns:
+                rows = rows.sort_values("Date")
+                ref_row = rows.iloc[-1]
+            else:
+                ref_row = rows.iloc[0]
+            return _format_time_tag(ref_row)
+
+        formatted = []
+        for k, v in vc.items():
+            tag = _tag_for_id(k)
+            label = f"{k} [{tag}]" if tag else k
+            formatted.append(f"{label} ({int(v)})")
+
+        out[int(cid)] = formatted
     return out

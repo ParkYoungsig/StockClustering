@@ -6,17 +6,27 @@ import logging
 from pathlib import Path
 from typing import Dict
 
+import joblib
+
 import numpy as np
 import pandas as pd
 
 from src.gmm import config
 from src.gmm.data_loader import FEATURE_COLUMNS, convert_df_to_snapshots
 from src.gmm.pipeline_logic import select_best_k, train_gmm_per_year
-from src.gmm.postprocessor import compute_cluster_stats, filter_noise, get_latest_year_frame
+from src.gmm.postprocessor import (
+    compute_cluster_stats,
+    filter_noise,
+    get_latest_year_frame,
+)
 from src.gmm.preprocessor import preprocess_features
 from src.gmm.report_metrics import compute_report_metrics
-from src.gmm.reporter import build_cluster_members, build_cluster_top_tickers, write_text_report
-from src.gmm.utils import save_artifacts
+from src.gmm.reporter import (
+    build_cluster_members_all_years,
+    build_cluster_members_by_year,
+    build_cluster_top_tickers,
+    write_text_report,
+)
 from src.gmm.visualizer import (
     plot_cluster_boxplots,
     plot_cluster_heatmap,
@@ -49,6 +59,35 @@ def compute_umap_embedding(
     except Exception as e:
         logger.warning(f"UMAP 계산 건너뜀: {e}")
         return None
+
+
+def save_artifacts(
+    results_dir: Path,
+    scaler,
+    labels_map,
+    final_k: int,
+    features,
+    means,
+    model,
+) -> None:
+    """전처리 스케일러, 메타데이터, 모델 등을 아티팩트로 저장."""
+
+    artifacts_dir = results_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    joblib.dump(scaler, artifacts_dir / "scaler.pkl")
+    joblib.dump(
+        {
+            "labels_per_year": labels_map,
+            "final_k": final_k,
+            "feature_columns": features,
+            "cluster_means_latest": means,
+        },
+        artifacts_dir / "metadata.pkl",
+    )
+
+    if model is not None:
+        joblib.dump(model, artifacts_dir / "gmm_latest_year.pkl")
 
 
 def run_gmm_pipeline(
@@ -123,7 +162,8 @@ def run_gmm_pipeline(
 
     means, stds, cluster_counts = compute_cluster_stats(df_valid, feature_cols_used)
 
-    members_map = build_cluster_members(df_valid)
+    members_map = build_cluster_members_all_years(df_clean, labels_map)
+    members_by_year = build_cluster_members_by_year(df_clean, labels_map)
     top_tickers_map = build_cluster_top_tickers(df_valid, top_n=10)
 
     df_valid.to_csv(results_dir / "final_clustered_data.csv", index=False)
@@ -133,7 +173,18 @@ def run_gmm_pipeline(
     pd.DataFrame(
         [(cid, name) for cid, names in members_map.items() for name in names],
         columns=["cluster", "member"],
-    ).to_csv(results_dir / "cluster_members_latest.csv", index=False)
+    ).to_csv(results_dir / "cluster_members_all_years.csv", index=False)
+
+    # 연도별 멤버 요약 추가 저장
+    rows_by_year = []
+    for year, m in members_by_year.items():
+        for cid, names in m.items():
+            for name in names:
+                rows_by_year.append((year, cid, name))
+    if rows_by_year:
+        pd.DataFrame(rows_by_year, columns=["year", "cluster", "member"]).to_csv(
+            results_dir / "cluster_members_by_year.csv", index=False
+        )
 
     save_artifacts(
         results_dir,
@@ -146,7 +197,9 @@ def run_gmm_pipeline(
     )
 
     pca_explained = (
-        getattr(pca_model, "explained_variance_ratio_", []) if pca_model is not None else []
+        getattr(pca_model, "explained_variance_ratio_", [])
+        if pca_model is not None
+        else []
     )
 
     report_metrics = compute_report_metrics(
@@ -173,7 +226,9 @@ def run_gmm_pipeline(
         top_tickers_map,
         noise_summary=noise_summary,
         stability_summary=(
-            {"mean_by_k": stability_by_k, "elbow_k": elbow_k} if stability_by_k else None
+            {"mean_by_k": stability_by_k, "elbow_k": elbow_k}
+            if stability_by_k
+            else None
         ),
         quality_summary=report_metrics.get("quality_summary"),
         silhouette_summary=report_metrics.get("silhouette_summary"),
@@ -186,7 +241,9 @@ def run_gmm_pipeline(
         cluster_interpretations=getattr(config, "CLUSTER_INTERPRETATIONS", None),
     )
 
-    plot_cluster_heatmap(means, results_dir / "heatmap.png", cluster_names=config.CLUSTER_NAMES)
+    plot_cluster_heatmap(
+        means, results_dir / "heatmap.png", cluster_names=config.CLUSTER_NAMES
+    )
     plot_radar_chart(
         means,
         results_dir / "radar.png",
