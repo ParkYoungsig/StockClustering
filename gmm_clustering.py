@@ -12,7 +12,12 @@ import numpy as np
 import pandas as pd
 
 from src.gmm import config
-from src.gmm.data_loader import FEATURE_COLUMNS, convert_df_to_snapshots
+from src.gmm.data_loader import (
+    FEATURE_COLUMNS,
+    convert_df_to_snapshots,
+    ensure_date_ticker,
+    load_snapshots,
+)
 from src.gmm.pipeline_logic import select_best_k, train_gmm_per_year
 from src.gmm.processer import (
     compute_cluster_stats,
@@ -38,6 +43,10 @@ from src.gmm.visualizer import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# 모든 출력 파일 이름 앞에 붙일 접두사
+FILE_PREFIX = "gmm_"
 
 
 def compute_umap_embedding(
@@ -75,7 +84,7 @@ def save_artifacts(
     artifacts_dir = results_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    joblib.dump(scaler, artifacts_dir / "scaler.pkl")
+    joblib.dump(scaler, artifacts_dir / f"{FILE_PREFIX}scaler.pkl")
     joblib.dump(
         {
             "labels_per_year": labels_map,
@@ -83,11 +92,11 @@ def save_artifacts(
             "feature_columns": features,
             "cluster_means_latest": means,
         },
-        artifacts_dir / "metadata.pkl",
+        artifacts_dir / f"{FILE_PREFIX}metadata.pkl",
     )
 
     if model is not None:
-        joblib.dump(model, artifacts_dir / "gmm_latest_year.pkl")
+        joblib.dump(model, artifacts_dir / f"{FILE_PREFIX}latest_year.pkl")
 
 
 def run_gmm_pipeline(
@@ -166,14 +175,16 @@ def run_gmm_pipeline(
     members_by_year = build_cluster_members_by_year(df_clean, labels_map)
     top_tickers_map = build_cluster_top_tickers(df_valid, top_n=10)
 
-    df_valid.to_csv(results_dir / "final_clustered_data.csv", index=False)
+    df_valid.to_csv(results_dir / f"{FILE_PREFIX}final_clustered_data.csv", index=False)
     if probs_map and target_year in probs_map:
-        probs_map[target_year].to_csv(results_dir / "final_probabilities_latest.csv")
+        probs_map[target_year].to_csv(
+            results_dir / f"{FILE_PREFIX}final_probabilities_latest.csv"
+        )
 
     pd.DataFrame(
         [(cid, name) for cid, names in members_map.items() for name in names],
         columns=["cluster", "member"],
-    ).to_csv(results_dir / "cluster_members_all_years.csv", index=False)
+    ).to_csv(results_dir / f"{FILE_PREFIX}cluster_members_all_years.csv", index=False)
 
     # 연도별 멤버 요약 추가 저장
     rows_by_year = []
@@ -183,7 +194,7 @@ def run_gmm_pipeline(
                 rows_by_year.append((year, cid, name))
     if rows_by_year:
         pd.DataFrame(rows_by_year, columns=["year", "cluster", "member"]).to_csv(
-            results_dir / "cluster_members_by_year.csv", index=False
+            results_dir / f"{FILE_PREFIX}cluster_members_by_year.csv", index=False
         )
 
     save_artifacts(
@@ -213,7 +224,7 @@ def run_gmm_pipeline(
     )
 
     write_text_report(
-        results_dir / "report.txt",
+        results_dir / f"{FILE_PREFIX}report.txt",
         load_stats or {},
         prep_stats or {},
         bic_scores or [],
@@ -242,31 +253,33 @@ def run_gmm_pipeline(
     )
 
     plot_cluster_heatmap(
-        means, results_dir / "heatmap.png", cluster_names=config.CLUSTER_NAMES
+        means,
+        results_dir / f"{FILE_PREFIX}heatmap.png",
+        cluster_names=config.CLUSTER_NAMES,
     )
     plot_radar_chart(
         means,
-        results_dir / "radar.png",
+        results_dir / f"{FILE_PREFIX}radar.png",
         cluster_names=config.CLUSTER_NAMES,
         cluster_colors=config.CLUSTER_COLORS,
     )
     plot_parallel_coords(
         df_valid,
         feature_cols_used,
-        results_dir / "parallel.png",
+        results_dir / f"{FILE_PREFIX}parallel.png",
         cluster_names=config.CLUSTER_NAMES,
         cluster_colors=config.CLUSTER_COLORS,
     )
     plot_risk_return_scatter(
         means,
-        results_dir / "risk_return.png",
+        results_dir / f"{FILE_PREFIX}risk_return.png",
         cluster_names=config.CLUSTER_NAMES,
         cluster_colors=config.CLUSTER_COLORS,
     )
     plot_cluster_boxplots(
         df_valid,
         feature_cols_used,
-        results_dir / "cluster_boxplots.png",
+        results_dir / f"{FILE_PREFIX}cluster_boxplots.png",
         cluster_colors=config.CLUSTER_COLORS,
     )
 
@@ -274,7 +287,7 @@ def run_gmm_pipeline(
         plot_sankey(
             df_clean,
             labels_map,
-            results_dir / "sankey.html",
+            results_dir / f"{FILE_PREFIX}sankey.html",
             cluster_names=config.CLUSTER_NAMES,
             cluster_colors=config.CLUSTER_COLORS,
         )
@@ -289,7 +302,7 @@ def run_gmm_pipeline(
         plot_umap_scatter(
             embedding,
             labels_array,
-            results_dir / "umap.png",
+            results_dir / f"{FILE_PREFIX}umap.png",
             cluster_names=config.CLUSTER_NAMES,
             cluster_colors=config.CLUSTER_COLORS,
         )
@@ -310,19 +323,23 @@ class GMM:
         self.results_dir.mkdir(parents=True, exist_ok=True)
         self.load_stats: Dict | None = None
 
-        if df is not None and not df.empty:
+        if df is None or df.empty:
+            # 기본 설정(config.DEFAULT_DATA_DIR_NAME) 기준으로 스냅샷을 로드
+            self.df, self.load_stats = load_snapshots(
+                data_dir=Path(config.DEFAULT_DATA_DIR_NAME)
+            )
+        else:
+            df_norm = ensure_date_ticker(df)
             try:
                 self.df = convert_df_to_snapshots(
-                    df,
+                    df_norm,
                     freq=config.SNAPSHOT_FREQ,
                     start_year=config.START_YEAR,
                     end_year=config.END_YEAR,
                 )
             except Exception as e:
                 logger.warning(f"스냅샷 변환 실패, 원본 사용: {e}")
-                self.df = df
-        else:
-            self.df = df
+                self.df = df_norm
 
     def run(self, manual_k: int | None = 4) -> str:
         return run_gmm_pipeline(

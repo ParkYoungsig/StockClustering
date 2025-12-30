@@ -14,7 +14,7 @@ from src.gmm import config
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATA_DIR = Path("data")
+DEFAULT_DATA_DIR = Path(config.DEFAULT_DATA_DIR_NAME)
 HF_REPO_ID = "yumin99/stock-clustering-data"
 HF_MERGED_FILE = "merged_stock_data.parquet"
 
@@ -63,33 +63,39 @@ def _reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df[existing + remaining]
 
 
-def _ensure_date_ticker(df: pd.DataFrame, filename_stem: str) -> pd.DataFrame:
-    """인덱스/컬럼 상태와 상관없이 Date, Ticker를 강제 생성 (참고 스크립트 동일)."""
+def ensure_date_ticker(
+    df: pd.DataFrame, filename_stem: str | None = None
+) -> pd.DataFrame:
+    """Date는 멀티인덱스에서 풀고, Ticker는 파일명 힌트로 보강합니다."""
 
-    if isinstance(df.index, pd.MultiIndex):
-        df = df.reset_index()
+    out = df.copy()
+
+    # 멀티인덱스 → 컬럼으로 풀기 (Date/Ticker 우선)
+    if isinstance(out.index, pd.MultiIndex):
+        out = out.reset_index()
         rename_map: Dict[str, str] = {}
-        level_names = list(df.columns[:2])
+        level_names = list(out.columns[:2])
         if len(level_names) >= 1:
             rename_map[level_names[0]] = "Date"
         if len(level_names) >= 2:
             rename_map[level_names[1]] = "Ticker"
         if rename_map:
-            df = df.rename(columns=rename_map)
+            out = out.rename(columns=rename_map)
     else:
-        if "Date" not in df.columns:
-            df = df.reset_index()
-        if "index" in df.columns:
-            df = df.rename(columns={"index": "Date"})
+        if "Date" not in out.columns:
+            out = out.reset_index()
+        if "index" in out.columns:
+            out = out.rename(columns={"index": "Date"})
 
-    if "Ticker" not in df.columns:
+    # 파일명 힌트로 Ticker 보강 (없으면 기존 컬럼 유지)
+    if "Ticker" not in out.columns and filename_stem is not None:
         if "_" in filename_stem:
             code_str = filename_stem.split("_", 1)[0]
         else:
             code_str = filename_stem
-        df["Ticker"] = code_str
+        out["Ticker"] = code_str
 
-    return df
+    return out
 
 
 def _merge_local_raw_files(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
@@ -119,7 +125,7 @@ def _merge_local_raw_files(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
             df_flat = df_flat.rename(columns={"종목명": "Name", "종목코드": "Ticker"})
 
             # 2) Date/Ticker 강제 생성 (멀티인덱스 포함)
-            df_flat = _ensure_date_ticker(df_flat, file.stem)
+            df_flat = ensure_date_ticker(df_flat, file.stem)
 
             # 3) 컬럼 순서 정렬
             df_flat = _reorder_columns(df_flat)

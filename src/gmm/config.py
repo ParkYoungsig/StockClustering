@@ -10,8 +10,8 @@ from pathlib import Path
 # [프로젝트 경로 설정]
 # 프로젝트 루트 기준 상대 경로
 # ==========================================
-DEFAULT_RESULTS_DIR_NAME = "gmm_results"  # 결과 저장 디렉토리
-DEFAULT_DATA_DIR_NAME = "data"  # 데이터 소스 디렉토리
+DEFAULT_RESULTS_DIR_NAME = r".\output"  # 결과 저장 디렉토리 (예: .\output)
+DEFAULT_DATA_DIR_NAME = r"..\data"  # 데이터 소스 디렉토리 (예: ..\data)
 
 # ==========================================
 # [파이프라인 하이퍼파라미터 설정]

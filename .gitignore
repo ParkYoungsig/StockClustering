@@ -1,5 +1,6 @@
 # 1. 데이터 파일 절대 금지
 notebooks/
+output/
 data/
 *.parquet
 *.csv
