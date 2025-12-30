@@ -13,7 +13,7 @@ import kmeans_clustering  # noqa
 
 # dependencies
 # 처리 및 오류 로깅 모듈
-from logging_config import logger
+from lib.logging_config import logger
 
 # 그리기 모듈
 

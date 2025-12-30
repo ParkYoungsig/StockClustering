@@ -5,9 +5,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from kmm_align_clusters_mixed import align_cluster_labels_wide_csv_mixed
-from kmm_pca_maps_aligned import plot_aligned_pca_maps
-from kmm_pipeline import load_parquets_to_df_all, rolling_cluster_table
+from kmm.kmm_align_clusters_mixed import align_cluster_labels_wide_csv_mixed
+from kmm.kmm_pca_maps_aligned import plot_aligned_pca_maps
+from kmm.kmm_pipeline import load_parquets_to_df_all, rolling_cluster_table
+from kmm.config import data_folder, dates, feature_cols
 
 
 @dataclass
@@ -134,3 +135,38 @@ def run_kmeans_clustering(cfg: KMeansClusteringConfig) -> Dict[str, Any]:
         "aligned_outputs": aligned_outputs,
         "pca_map_paths": pca_map_paths,
     }
+
+def init_kmeans_clustering() :
+    # ===== 나머지 파라미터 (원하면 여기서만 수정) ===== :contentReference[oaicite:3]{index=3}
+    cfg = KMeansClusteringConfig(
+        data_folder=data_folder,
+        dates=dates,
+        feature_cols=feature_cols,
+        lower_q=0.01,
+        upper_q=0.99,
+        variant="wins_std",  # "wins_std" or "wins_rob"
+        pca_n=8,
+        k_min=2,
+        k_max=5,
+        n_init=200,
+        corr_drop_mode="baseline",
+        output_root="kmeans_outputs",
+        save_per_date=True,
+        make_plots=True,
+        stability_seeds=list(range(5)),
+        stability_n_init=20,
+        do_align=True,
+        w_overlap=0.25,
+        w_centroid=0.75,
+        min_jaccard=0.0,
+        do_pca_maps=True,
+        label_all=True,
+        label_fontsize=6,
+        omp_num_threads="1",
+    )
+
+    return cfg
+
+if __name__ == "__main__":
+    cfg = init_kmeans_clustering()
+    kmm_report = run_kmeans_clustering(cfg)

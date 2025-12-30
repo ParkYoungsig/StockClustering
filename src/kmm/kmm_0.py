@@ -1,5 +1,5 @@
 # kmm_1.py
-from kmm_ready import KMeansClusteringConfig, run_kmeans_clustering
+from src.kmm_clustering import KMeansClusteringConfig, run_kmeans_clustering
 
 
 def main():
