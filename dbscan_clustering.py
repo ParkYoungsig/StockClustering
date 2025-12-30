@@ -1,10 +1,8 @@
 import os
 import io
+import sys
 import requests
 import warnings
-import unicodedata
-from typing import Optional, Tuple
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,9 +10,10 @@ import matplotlib.font_manager as fm
 import seaborn as sns
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
+from datetime import datetime
 
 # ---------------------------------------------------------
-# [1] 설정 및 라이브러리 로드
+# Dependency Check: adjustText
 # ---------------------------------------------------------
 try:
     from adjustText import adjust_text
@@ -26,97 +25,92 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 class PlotConfig:
-    """차트 스타일 및 폰트 설정"""
+    """시각화 스타일 및 폰트 설정 관리"""
+    
     @staticmethod
     def set_style():
         sns.set(style='whitegrid')
         plt.rcParams['axes.unicode_minus'] = False
-        PlotConfig._set_korean_font()
+        PlotConfig._load_web_font()
 
     @staticmethod
-    def _set_korean_font():
-        # 코랩/로컬 환경에 맞춰 한글 폰트 자동 설정
-        font_candidates = ['NanumBarunGothic', 'Malgun Gothic', 'AppleGothic']
-        colab_font = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'
-        if os.path.exists(colab_font):
-            fm.fontManager.addfont(colab_font)
-            plt.rc('font', family='NanumBarunGothic')
-            return
-        system_font = next((f for f in font_candidates if f in [f.name for f in fm.fontManager.ttflist]), 'sans-serif')
-        plt.rc('font', family=system_font)
+    def _load_web_font():
+        font_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+        font_name = "NanumGothic.ttf"
+        
+        if not os.path.exists(font_name):
+            try:
+                response = requests.get(font_url)
+                response.raise_for_status()
+                with open(font_name, 'wb') as f:
+                    f.write(response.content)
+            except Exception:
+                pass
 
+        if os.path.exists(font_name):
+            fm.fontManager.addfont(font_name)
+            plt.rc('font', family='NanumGothic')
+        else:
+            plt.rc('font', family='sans-serif')
 
-# ---------------------------------------------------------
-# [2] GitHub 데이터 로더 (핵심 수정 부분)
-# ---------------------------------------------------------
 class GitHubDataLoader:
-    """
-    GitHub 레포지토리의 Raw 파일을 직접 읽어오는 로더입니다.
-    """
+    """GitHub Raw 데이터를 이용한 주가 데이터 로더"""
+    
     def __init__(self, repo_owner: str, repo_name: str, branch: str = 'main'):
         self.base_url = f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}"
 
-    def load_csv(self, filename: str) -> pd.DataFrame:
-        """GitHub에서 CSV 파일을 다운로드하여 데이터프레임으로 변환합니다."""
-        url = f"{self.base_url}/{filename}"
-        print(f"📥 데이터 다운로드 중... ({url})")
+    def load_date_data(self, date_str: str) -> pd.DataFrame:
+        filename_daily = f"{date_str}.csv"
+        df = self._fetch_csv(filename_daily)
         
-        try:
-            response = requests.get(url)
-            response.raise_for_status()  # 404 등 에러 체크
-            
-            # 한글 인코딩 처리 (cp949 또는 utf-8 시도)
-            try:
-                df = pd.read_csv(io.StringIO(response.text))
-            except:
-                df = pd.read_csv(io.BytesIO(response.content), encoding='cp949')
-                
-            print(f"✅ 로드 성공: {len(df)}개 종목")
-            return self._standardize_data(df)
-            
-        except Exception as e:
-            print(f"[에러] 데이터 로드 실패: {e}")
+        if df.empty:
+            print(f"[INFO] '{filename_daily}' not found. Trying master list...")
+            df = self._fetch_csv('stock_list.csv')
+
+        if df.empty:
             return pd.DataFrame()
 
-    def _standardize_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        로드한 데이터의 컬럼 이름을 분석 코드에 맞게 변환하고,
-        없는 컬럼(배당, 이익 등)은 0으로 채워 에러를 방지합니다.
-        """
-        # 1. 컬럼명 매핑 (한글 -> 영어)
+        return self._standardize_data(df, date_str)
+
+    def _fetch_csv(self, filename: str) -> pd.DataFrame:
+        url = f"{self.base_url}/{filename}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            try:
+                return pd.read_csv(io.StringIO(response.text))
+            except:
+                return pd.read_csv(io.BytesIO(response.content), encoding='cp949')
+        except Exception:
+            return pd.DataFrame()
+
+    def _standardize_data(self, df: pd.DataFrame, date_str: str) -> pd.DataFrame:
         col_map = {
-            '종목코드': 'Ticker',
-            '종목명': 'Name',
-            '종가': 'Close',
-            '등락률': 'Chg_Pct',
-            '상장시가총액': 'Marcap',
-            '거래량': 'Volume'
+            '종목코드': 'Ticker', '종목명': 'Name', 
+            '종가': 'Close', '등락률': 'Chg_Pct', 
+            '상장시가총액': 'Marcap', '거래량': 'Volume',
+            '배당수익률': 'Dividend_Yield', '주당배당금': 'DPS'
         }
         df.rename(columns=col_map, inplace=True)
         
-        # 2. 티커(종목코드) 표준화 (6자리 문자열)
         if 'Ticker' in df.columns:
             df['Ticker'] = df['Ticker'].apply(lambda x: f"{int(x):06d}" if isinstance(x, (int, float)) else str(x))
 
-        # 3. 기준 날짜 컬럼 추가 (스냅샷 데이터이므로 오늘 날짜로 가정)
-        if 'Date' not in df.columns:
-            df['Date'] = pd.Timestamp.now().normalize()
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+        else:
+            df['Date'] = pd.to_datetime(date_str)
 
-        # 4. 분석에 필수적인 컬럼이 없으면 0으로 채움 (안전장치)
-        required_cols = ['Dividend_Yield', 'DPS', 'Disparity_60d', 'vol_60', '영업이익']
+        required_cols = ['Dividend_Yield', 'DPS', '영업이익', 'Marcap']
         for col in required_cols:
             if col not in df.columns:
-                # print(f"[알림] '{col}' 컬럼이 없어 0으로 초기화합니다.")
                 df[col] = 0.0
 
         return df.set_index('Date')
 
-
-# ---------------------------------------------------------
-# [3] 피처 엔지니어링 (기존 로직 유지)
-# ---------------------------------------------------------
 class FeatureEngineer:
-    """데이터 가공 및 지표 생성"""
+    """Raw 데이터를 시각화용 X, Y 좌표 및 메타데이터로 변환"""
+    
     @staticmethod
     def create_features(snapshot: pd.DataFrame, mode: str = 'wide') -> pd.DataFrame:
         if snapshot.empty: return pd.DataFrame()
@@ -124,23 +118,18 @@ class FeatureEngineer:
         df = snapshot.copy()
         if 'Ticker' in df.columns: df.set_index('Ticker', inplace=True)
         
-        # 숫자형 변환 헬퍼
         def to_num(s): 
             return pd.to_numeric(s.astype(str).str.replace(r'[,%]', '', regex=True), errors='coerce').fillna(0)
 
-        # 데이터 추출
         dy = to_num(df['Dividend_Yield'])
         dps = to_num(df['DPS'])
         op_profit = to_num(df['영업이익'])
         marcap = to_num(df['Marcap'])
         
-        # 배당률 단위 보정 (3.5 -> 0.035)
         if dy.median() > 1.0: dy /= 100.0
         
-        # 배당 유무 플래그
         payer = (dy > 0) | (dps > 0)
         
-        # 모드별 필터링
         if mode == 'div_only':
             target_idx = payer[payer].index
             df = df.loc[target_idx]
@@ -148,89 +137,125 @@ class FeatureEngineer:
 
         if df.empty: return pd.DataFrame()
 
-        # X축: 배당 모멘텀 (현재 데이터가 부족하므로 배당수익률 위주로 계산)
         qt = QuantileTransformer(n_quantiles=min(100, len(df)), output_distribution='normal', random_state=42)
         
-        # X축 입력값 구성
         if mode == 'wide':
             x_input = dy.copy()
-            x_input[payer] += 2.0 # 배당주 우대
+            x_input[payer] += 2.0 
         else:
             x_input = dy.copy()
             
-        # 정규화
         x_norm = qt.fit_transform(x_input.values.reshape(-1,1)).ravel()
         x_final = MinMaxScaler().fit_transform(x_norm.reshape(-1,1)).ravel()
-        
-        # Y축: 실적 (영업이익 랭크)
         y_final = op_profit.rank(pct=True).values
 
+        names = df['Name'] if 'Name' in df.columns else pd.Series(index=df.index, data=df.index)
+
         return pd.DataFrame({
+            'Name': names,
             'X_Momentum': x_final,
             'Y_Fundamental': y_final,
             'MarketCap': marcap.values,
             'Dividend_Yield': dy.values,
-            'Cluster_Name': 'TBD' # 추후 할당
         }, index=df.index)
 
-
-# ---------------------------------------------------------
-# [4] 시각화 및 메인 실행
-# ---------------------------------------------------------
 class RallyMapVisualizer:
-    def run(self, data: pd.DataFrame):
-        print("\n🚀 [분석 시작] GitHub 데이터 기반")
+    def run(self, data: pd.DataFrame, target_date_str: str, output_folder: str = None):
+        target_date = pd.to_datetime(target_date_str)
         
-        # 가장 최근 날짜 데이터 추출
-        last_date = sorted(data.index.unique())[-1]
-        snapshot = data.loc[last_date]
-        if isinstance(snapshot, pd.Series): snapshot = snapshot.to_frame().T
-        
-        # 피처 생성
+        if isinstance(data.index, pd.DatetimeIndex):
+            snapshot = data[data.index == target_date]
+        else:
+            snapshot = data.copy()
+
+        if snapshot.empty:
+            print(f"[WARN] {target_date_str} No data found in loaded DataFrame.")
+            return
+
         fe = FeatureEngineer()
         feats = fe.create_features(snapshot, mode='wide')
         
         if feats.empty:
-            print("❌ 분석할 데이터가 충분하지 않습니다.")
+            print("[WARN] Not enough features for plotting.")
             return
 
-        # 클러스터링 (간단화)
-        # X, Y 좌표가 0인 경우가 많을 수 있어(데이터 부재) 노이즈 처리 주의
+        self._plot(feats, target_date_str, output_folder)
+
+    def _plot(self, feats, date_str, output_folder):
         X = feats[['X_Momentum', 'Y_Fundamental']].values
-        db = DBSCAN(eps=0.1, min_samples=3).fit(X)
+        
+        min_samples = 3 if len(feats) > 10 else 1
+        db = DBSCAN(eps=0.1, min_samples=min_samples).fit(X)
         feats['Cluster'] = db.labels_
         
-        # 시각화
         plt.figure(figsize=(12, 8))
         plt.scatter(feats['X_Momentum'], feats['Y_Fundamental'], 
-                    s=np.log1p(feats['MarketCap'])*5 + 10, 
-                    c=feats['Cluster'], cmap='tab10', alpha=0.7, edgecolors='white')
+                    s=np.log1p(feats['MarketCap'])*5 + 20, 
+                    c=feats['Cluster'], cmap='tab10', alpha=0.8, edgecolors='white')
         
-        plt.title(f"GitHub Repo Data Map ({last_date.date()})", fontsize=15)
-        plt.xlabel("Dividend Score (Data Missing=0)", fontsize=12)
-        plt.ylabel("Profit Rank (Data Missing=0)", fontsize=12)
-        plt.grid(True, alpha=0.3)
+        texts = []
+        top_stocks = feats.sort_values('MarketCap', ascending=False).head(10)
+        for idx, row in top_stocks.iterrows():
+            name = row['Name'] if isinstance(row['Name'], str) else str(idx)
+            texts.append(plt.text(row['X_Momentum'], row['Y_Fundamental'], name, fontsize=9))
+
+        try:
+            adjust_text(texts, arrowprops=dict(arrowstyle='-', color='gray', lw=0.5))
+        except:
+            pass
+
+        plt.title(f"Market Rally Map ({date_str})", fontsize=16, fontweight='bold')
+        plt.xlabel("Dividend Momentum (Normalized)", fontsize=12)
+        plt.ylabel("Fundamental Rank (Percentile)", fontsize=12)
+        plt.grid(True, alpha=0.3, linestyle='--')
+        
+        # ---------------------------------------------------------
+        # Save Logic
+        # ---------------------------------------------------------
+        if output_folder:
+            os.makedirs(output_folder, exist_ok=True)
+            save_path = os.path.join(output_folder, f"rally_map_{date_str}.png")
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"[SUCCESS] Plot saved to: {os.path.abspath(save_path)}")
+
         plt.show()
-        print("✅ 시각화 완료")
 
+def get_valid_date():
+    """사용자로부터 유효한 날짜 입력 받기 (Validation 포함)"""
+    default_date = "2024-05-20"
+    
+    while True:
+        user_input = input(f"\n>> 분석할 날짜를 입력하세요 (YYYY-MM-DD) [Enter for {default_date}]: ").strip()
+        
+        # 1. 빈 입력 -> 기본값 사용
+        if not user_input:
+            return default_date
+            
+        # 2. 날짜 형식 검증
+        try:
+            # 단순히 파싱 가능 여부만 체크
+            pd.to_datetime(user_input)
+            return user_input
+        except ValueError:
+            print("[ERR] 날짜 형식이 올바르지 않습니다. (예: 2024-05-20)")
+            continue
 
-# =========================================================
-# 메인 실행부
-# =========================================================
 if __name__ == "__main__":
     PlotConfig.set_style()
     
-    # 1. GitHub에서 데이터 로드
-    # (ParkYoungsig/StockClustering 레포의 main 브랜치 사용)
-    loader = GitHubDataLoader(repo_owner='ParkYoungsig', repo_name='StockClustering')
+    # ---------------------------------------------------------
+    # Configuration & User Input
+    # ---------------------------------------------------------
+    data_folder = r".\output"  # 출력 폴더
+    target_date = get_valid_date()
     
-    # stock_list.csv 파일을 로드합니다.
-    df = loader.load_csv('stock_list.csv')
+    print(f"\n[INFO] Processing date: {target_date}...")
+    
+    loader = GitHubDataLoader(repo_owner='ParkYoungsig', repo_name='StockClustering')
+    df = loader.load_date_data(target_date)
     
     if not df.empty:
-        # 2. 분석 및 시각화 실행
         viz = RallyMapVisualizer()
-        viz.run(df)
+        viz.run(df, target_date, output_folder=data_folder)
     else:
-        print("데이터를 불러오지 못했습니다.")
-
+        print("[ERR] Failed to load data. Please check the date or internet connection.")
