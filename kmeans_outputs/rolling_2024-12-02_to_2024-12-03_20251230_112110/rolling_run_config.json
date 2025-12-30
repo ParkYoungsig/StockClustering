@@ -1,0 +1,26 @@
+{
+  "dates":[
+    "2024-12-02",
+    "2024-12-03"
+  ],
+  "feature_cols":[
+    "Return_20d",
+    "Return_60d",
+    "vol_20",
+    "vol_60",
+    "PER",
+    "ROE",
+    "ROE_YoY",
+    "EPS_YoY"
+  ],
+  "lower_q":0.01,
+  "upper_q":0.99,
+  "variant":"wins_std",
+  "pca_n":8,
+  "k_min":2,
+  "k_max":5,
+  "n_init":200,
+  "random_state":42,
+  "corr_threshold":0.95,
+  "corr_drop_mode":"baseline"
+}
