@@ -20,6 +20,7 @@
     1) `data/merged_stock_data.parquet` (로컬 병합본)
     2) 로컬 `data/*.parquet` 원본들을 즉석 병합
     3) Hugging Face 데이터셋 fallback (`yumin99/stock-clustering-data`)
+  - 로컬 원본 `data/*.parquet`은 보통 **인덱스가 `Date`만 있고 `Ticker` 컬럼이 없을 수 있는데**, 이 경우 파일명(`{티커}_{종목명}.parquet`)에서 티커를 추출해 `Ticker` 컬럼을 보강합니다.
 
 - `processer.py`
   - 모델 입력 피처 전처리(결측 제거, 이상치 제거, 스케일링, (옵션) PCA)
@@ -34,7 +35,7 @@
 
 
 - `reporter.py`
-  - 텍스트 리포트(`report.txt`) 생성
+  - 텍스트 리포트(`gmm_report.txt`) 생성
   - 멤버 리스트 생성(전기간 / 연도별) 및 최신 연도 기준 Top 티커 요약
   - 시간 태그 정책: **월 스냅샷이면 `YYYY-MM(YearMonth)`**, 연 스냅샷이면 **`YYYY(Year)`**
 
@@ -52,8 +53,12 @@
 ### 필수 컬럼
 
 - 최소 요구: `Date`
-- 식별자: `Ticker` (없으면 일부 로직이 `Code`로 fallback)
+- 식별자: `Ticker` (파이프라인에서 강하게 권장)
 - 스냅샷 변환 후: `Year`, `Month`가 생성됩니다.
+
+참고:
+- `load_snapshots()`의 “로컬 원본 즉석 병합” 경로는 원본이 `Date` 인덱스만 가진 형태여도 파일명 기반으로 `Ticker`를 만들어 표준 스키마(`Date`, `Ticker` 컬럼)로 정규화합니다.
+- 반대로, 외부에서 `GMM(df=...)`로 **DataFrame을 직접 주입**하는 경우에는 파일명 힌트가 없으므로 `Ticker`가 컬럼 또는 멀티인덱스 레벨로 **이미 포함되어 있어야** 합니다.
 
 ### 스냅샷 주기(`SNAPSHOT_FREQ`)
 
@@ -104,38 +109,38 @@
 4) **후처리/리포트/시각화**
 - `processer.get_latest_year_frame()`로 최신 연도 프레임 구성
 - `processer.filter_noise()`로 너무 작은 군집을 노이즈 처리
-- `reporter.write_text_report()`로 `report.txt` 생성
-- `visualizer.py`에서 주요 그래프 생성
+- `reporter.write_text_report()`로 `gmm_report.txt` 생성
+- `visualizer.py`에서 주요 그래프 생성 (파일명 접두사 `gmm_`)
 
 ---
 
 ## 산출물(결과 파일)
 
-기본적으로 결과는 `gmm_clustering.GMM`이 사용하는 `results_dir`(기본: `gmm_results/`) 아래에 저장됩니다.
+기본적으로 결과는 `gmm_clustering.GMM`이 사용하는 `results_dir`(기본: `.\output`) 아래에 저장됩니다. 모든 산출물 파일명에는 접두사 `gmm_`가 붙습니다.
 
 주요 산출물:
 
-- `final_clustered_data.csv`
+- `gmm_final_clustered_data.csv`
   - 최신 연도 기준 유효 샘플(`cluster != -1`)에 클러스터 라벨 포함
 
-- `final_probabilities_latest.csv`
+- `gmm_final_probabilities_latest.csv`
   - 최신 연도 기준 각 샘플의 클러스터 소속확률(soft assignment)
 
-- `cluster_members_all_years.csv`
+- `gmm_cluster_members_all_years.csv`
   - **전 기간**(연/월 스냅샷 전체) 기준 클러스터 멤버 리스트
   - 멤버 표기는 `Ticker (Name, YYYY)` 또는 `Ticker (Name, YYYY-MM)` 형태
 
-- `cluster_members_by_year.csv`
+- `gmm_cluster_members_by_year.csv`
   - **연도별** 멤버 요약(팀 프로젝트 공유용)
   - 컬럼: `year, cluster, member`
 
-- `report.txt`
+- `gmm_report.txt`
   - 데이터/전처리/선택된 K/클러스터 평균/품질지표/전이 요약 등 텍스트 리포트
   - “Top 티커” 섹션은 **최신 연도** 기준입니다.
 
 - `artifacts/`
-  - `scaler.pkl`: 전처리 스케일러(또는 그룹별 스케일러)
-  - `metadata.pkl`: `labels_per_year`, `final_k`, `feature_columns`, `cluster_means_latest` 등
+  - `gmm_scaler.pkl`: 전처리 스케일러(또는 그룹별 스케일러)
+  - `gmm_metadata.pkl`: `labels_per_year`, `final_k`, `feature_columns`, `cluster_means_latest` 등
   - `gmm_latest_year.pkl`: 최신 연도 모델(있을 때만)
 
 ---
@@ -158,8 +163,8 @@ from pathlib import Path
 from src.gmm.data_loader import load_snapshots
 from gmm_clustering import GMM
 
-df, stats = load_snapshots(data_dir=Path("data"))
-gmm = GMM(df, results_dir=Path("gmm_results"))
+df, stats = load_snapshots(data_dir=Path("..\\data"))
+gmm = GMM(df, results_dir=Path(".\\output"))
 print(gmm.run(manual_k=4))
 ```
 

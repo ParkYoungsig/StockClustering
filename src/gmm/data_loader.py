@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import pandas as pd
-from datasets import load_dataset  # type: ignore
 
 from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
 from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, FALLBACK_DAYS, K_RANGE
@@ -30,7 +29,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATA_DIR = Path("data")
+# NOTE: config 모듈을 직접 참조하지 않고, src/config.py에서 import한 값을 사용합니다.
+DEFAULT_DATA_DIR = Path(DEFAULT_DATA_DIR_NAME)
 HF_REPO_ID = "yumin99/stock-clustering-data"
 HF_MERGED_FILE = "merged_stock_data.parquet"
 
@@ -183,6 +183,15 @@ def _load_local(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
 
 
 def _load_from_huggingface() -> pd.DataFrame:
+    try:
+        from datasets import load_dataset  # type: ignore
+    except Exception as e:  # noqa: BLE001
+        raise ModuleNotFoundError(
+            "Hugging Face에서 데이터를 로드하려면 'datasets' 패키지가 필요합니다. "
+            "로컬 data 폴더에 parquet이 있으면 datasets 없이도 실행됩니다. "
+            "설치: pip install datasets"
+        ) from e
+
     uri = f"hf://datasets/{HF_REPO_ID}/{HF_MERGED_FILE}"
     ds = load_dataset("parquet", data_files=uri, split="train")
     df = ds.to_pandas()
