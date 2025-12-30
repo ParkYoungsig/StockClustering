@@ -8,8 +8,8 @@ import collect_create_data
 
 # 군집화 알고리즘별 모듈
 import gmm_clustering  # noqa
-import hdbscan_clustering  # noqa
-import kmeans_clustering  # noqa
+import hdb_clustering as hdb_clustering  # noqa
+import kmm_clustering  # noqa
 
 # dependencies
 # 처리 및 오류 로깅 모듈
@@ -98,8 +98,8 @@ def main():
             logger.info("End   loading data")
 
             logger.info("Start KMeans clustering")
-            # kms = KMeans(df)
-            # ksm_report = kms.run()
+            cfg = init_kmeans_clustering()
+            kmm_report = run_kmeans_clustering(cfg)
             logger.info("End   KMeans clustering")
 
             logger.info("Start GMM clustering")
