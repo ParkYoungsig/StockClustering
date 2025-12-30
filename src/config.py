@@ -1,3 +1,11 @@
+# NOTE: 이 파일은 프로젝트 전역 설정을 담습니다.
+# 여러 모듈에서 import 되므로, 타입/Path 등 기본 import는 반드시 안전하게 포함합니다.
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List
+
 # # Default analysis parameters
 # DEFAULT_ROLLING_PERIOD = 252 * 5  # 1 year for daily data
 # DEFAULT_INTERVAL = '1d'
@@ -19,8 +27,8 @@
 # USE_CACHE = True
 
 # Logging settings
-LOG_DIRECTORY = 'log'
-LOG_LEVEL = 'INFO'  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_DIRECTORY = "log"
+LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
 LOG_BACKUP_COUNT = 5
 
@@ -40,16 +48,16 @@ LOG_BACKUP_COUNT = 5
 # }
 
 # Korean market tickers (for auto-detection)
-KOREAN_MARKET_EXCHANGES = ['KRX', 'KOSPI', 'KOSDAQ']
+KOREAN_MARKET_EXCHANGES = ["KRX", "KOSPI", "KOSDAQ"]
 
 # Chart styling
 CHART_STYLE = {
-    'up_color': '#26a69a',
-    'down_color': '#ef5350',
-    'volume_color': '#6495ED',
-    'ma_colors': ['#FF6B6B', '#4ECDC4', '#FFE66D'],
-    'grid_alpha': 0.3,
-    'line_width': 1.5,
+    "up_color": "#26a69a",
+    "down_color": "#ef5350",
+    "volume_color": "#6495ED",
+    "ma_colors": ["#FF6B6B", "#4ECDC4", "#FFE66D"],
+    "grid_alpha": 0.3,
+    "line_width": 1.5,
 }
 
 # # Metric display settings
@@ -112,7 +120,6 @@ feature_cols: List[str] = [
 ]
 
 
-
 # ------------------------------------------ #
 # kmeans_clustering.py 등을 위한 config 정보   #
 # ------------------------------------------ #
@@ -122,14 +129,15 @@ feature_cols: List[str] = [
 시각화에 사용할 클러스터 이름/색상 매핑을 정의합니다.
 """
 
-# from pathlib import Path
+# 프로젝트 루트 경로(현재 파일: <root>/src/config.py)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # ==========================================
 # [프로젝트 경로 설정]
 # 프로젝트 루트 기준 상대 경로
 # ==========================================
-DEFAULT_RESULTS_DIR_NAME = "gmm_results"  # 결과 저장 디렉토리
-DEFAULT_DATA_DIR_NAME = "..\data"  # 데이터 소스 디렉토리
+DEFAULT_RESULTS_DIR_NAME = str(PROJECT_ROOT / "gmm_results")  # 결과 저장 디렉토리
+DEFAULT_DATA_DIR_NAME = str(PROJECT_ROOT / "data")  # 데이터 소스 디렉토리
 
 # ==========================================
 # [파이프라인 하이퍼파라미터 설정]

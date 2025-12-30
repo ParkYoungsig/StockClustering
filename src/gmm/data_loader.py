@@ -10,11 +10,23 @@ from typing import Dict, Tuple
 import pandas as pd
 from datasets import load_dataset  # type: ignore
 
-from config import DEFAULT_RESULTS_DIR_NAME,DEFAULT_DATA_DIR_NAME
-from config import SNAPSHOT_FREQ,START_YEAR,END_YEAR,FALLBACK_DAYS,K_RANGE
-from config import GMM_COVARIANCE_TYPE,GMM_N_INIT,GMM_MAX_ITER,GMM_REG_COVAR,GMM_ALIGN_METRIC
-from config import MIN_CLUSTER_FRAC,CORR_THRESHOLD, MAX_MISSING_RATIO
-from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST,CLUSTER_NAMES, CLUSTER_INTERPRETATIONS, CLUSTER_COLORS
+from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
+from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, FALLBACK_DAYS, K_RANGE
+from config import (
+    GMM_COVARIANCE_TYPE,
+    GMM_N_INIT,
+    GMM_MAX_ITER,
+    GMM_REG_COVAR,
+    GMM_ALIGN_METRIC,
+)
+from config import MIN_CLUSTER_FRAC, CORR_THRESHOLD, MAX_MISSING_RATIO
+from config import (
+    UMAP_N_NEIGHBORS,
+    UMAP_MIN_DIST,
+    CLUSTER_NAMES,
+    CLUSTER_INTERPRETATIONS,
+    CLUSTER_COLORS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,33 +79,39 @@ def _reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df[existing + remaining]
 
 
-def _ensure_date_ticker(df: pd.DataFrame, filename_stem: str) -> pd.DataFrame:
-    """인덱스/컬럼 상태와 상관없이 Date, Ticker를 강제 생성 (참고 스크립트 동일)."""
+def ensure_date_ticker(
+    df: pd.DataFrame, filename_stem: str | None = None
+) -> pd.DataFrame:
+    """Date/Ticker를 표준 컬럼으로 보장합니다.
 
-    if isinstance(df.index, pd.MultiIndex):
-        df = df.reset_index()
+    - MultiIndex면 reset_index()로 컬럼화
+    - Ticker가 없고 filename_stem이 있으면 파일명에서 티커를 보강
+    """
+
+    out = df.copy()
+
+    if isinstance(out.index, pd.MultiIndex):
+        idx_names = list(out.index.names)
+        out = out.reset_index()
         rename_map: Dict[str, str] = {}
-        level_names = list(df.columns[:2])
-        if len(level_names) >= 1:
-            rename_map[level_names[0]] = "Date"
-        if len(level_names) >= 2:
-            rename_map[level_names[1]] = "Ticker"
-        if rename_map:
-            df = df.rename(columns=rename_map)
+        if len(idx_names) >= 1:
+            rename_map[idx_names[0] or out.columns[0]] = "Date"
+        if len(idx_names) >= 2:
+            rename_map[idx_names[1] or out.columns[1]] = "Ticker"
+        out = out.rename(columns=rename_map)
     else:
-        if "Date" not in df.columns:
-            df = df.reset_index()
-        if "index" in df.columns:
-            df = df.rename(columns={"index": "Date"})
+        if "Date" not in out.columns:
+            out = out.reset_index()
+        if "index" in out.columns:
+            out = out.rename(columns={"index": "Date"})
 
-    if "Ticker" not in df.columns:
-        if "_" in filename_stem:
-            code_str = filename_stem.split("_", 1)[0]
-        else:
-            code_str = filename_stem
-        df["Ticker"] = code_str
+    if "Ticker" not in out.columns and filename_stem is not None:
+        code_str = (
+            filename_stem.split("_", 1)[0] if "_" in filename_stem else filename_stem
+        )
+        out["Ticker"] = code_str
 
-    return df
+    return out
 
 
 def _merge_local_raw_files(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
@@ -123,7 +141,7 @@ def _merge_local_raw_files(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
             df_flat = df_flat.rename(columns={"종목명": "Name", "종목코드": "Ticker"})
 
             # 2) Date/Ticker 강제 생성 (멀티인덱스 포함)
-            df_flat = _ensure_date_ticker(df_flat, file.stem)
+            df_flat = ensure_date_ticker(df_flat, file.stem)
 
             # 3) 컬럼 순서 정렬
             df_flat = _reorder_columns(df_flat)
@@ -265,8 +283,8 @@ def convert_df_to_snapshots(
 def _clean_features(df: pd.DataFrame) -> pd.DataFrame:
     """피처 결측 제거 후 분위수 클리핑 + z-score 스케일링을 수행합니다.
 
-    클리핑/스케일링은 Ticker-Year 그룹별로 적용해 교차섹션 왜곡을 완화하고,
-    그룹 크기가 작아 분산이 0이면 해당 컬럼은 그대로 둡니다.
+    클리핑/스케일링은 기본적으로 Year 그룹별로 적용합니다.
+    (Ticker-Year 단위는 그룹 수가 너무 많아 대용량에서 매우 느려질 수 있음)
     """
 
     features = [c for c in FEATURE_COLUMNS if c in df.columns]
@@ -276,9 +294,7 @@ def _clean_features(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.dropna(subset=features).copy()
 
     frames = []
-    group_cols = (
-        ["Ticker", "Year"] if {"Ticker", "Year"}.issubset(cleaned.columns) else []
-    )
+    group_cols = ["Year"] if "Year" in cleaned.columns else []
 
     if group_cols:
         for _, g in cleaned.groupby(group_cols):
