@@ -21,9 +21,9 @@
     2) 로컬 `data/*.parquet` 원본들을 즉석 병합
     3) Hugging Face 데이터셋 fallback (`yumin99/stock-clustering-data`)
 
-- `preprocessor.py`
+- `processer.py`
   - 모델 입력 피처 전처리(결측 제거, 이상치 제거, 스케일링, (옵션) PCA)
-  - 현재 `gmm_clustering.py`에서는 `use_pca=False`로 사용하도록 구성되어 있습니다.
+  - 최신 연도 프레임 구성, 노이즈 필터, 클러스터 통계 집계 포함
 
 - `model.py`
   - BIC 기반 K 후보 평가, 안정성(stability) 평가, 라벨 정렬(헝가리안 매칭/정렬) 등 수학/알고리즘 유틸
@@ -32,10 +32,6 @@
   - 파이프라인의 “핵심 학습 로직”
   - K 선택(`select_best_k`) 및 **연도별 학습 + 연도 간 라벨 정렬 + warm start**(`train_gmm_per_year`) 담당
 
-- `postprocessor.py`
-  - 최신 연도 프레임 구성(`get_latest_year_frame`)
-  - 작은 군집을 노이즈(-1)로 처리하는 필터(`filter_noise`)
-  - 클러스터별 평균/표준편차/개수 집계(`compute_cluster_stats`)
 
 - `reporter.py`
   - 텍스트 리포트(`report.txt`) 생성
@@ -94,7 +90,7 @@
 - 로드 후 `convert_df_to_snapshots()`로 연말/월말 스냅샷 데이터 생성
 
 2) **전처리**
-- `preprocessor.preprocess_features()`
+- `processer.preprocess_features()`
 - 결측 제거 + (옵션) IsolationForest로 이상치 제거 + 스케일링
 - 현재 엔트리(`gmm_clustering.py`)에서는 `use_pca=False`로 사용
 
@@ -106,8 +102,8 @@
   - 이전 연도의 중심을 이용한 warm start(`means_init`)를 적용
 
 4) **후처리/리포트/시각화**
-- `postprocessor.get_latest_year_frame()`로 최신 연도 프레임 구성
-- `postprocessor.filter_noise()`로 너무 작은 군집을 노이즈 처리
+- `processer.get_latest_year_frame()`로 최신 연도 프레임 구성
+- `processer.filter_noise()`로 너무 작은 군집을 노이즈 처리
 - `reporter.write_text_report()`로 `report.txt` 생성
 - `visualizer.py`에서 주요 그래프 생성
 
