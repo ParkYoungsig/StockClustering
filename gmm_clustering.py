@@ -81,7 +81,7 @@ def save_artifacts(
 ) -> None:
     """전처리 스케일러, 메타데이터, 모델 등을 아티팩트로 저장."""
 
-    artifacts_dir = results_dir / "artifacts"
+    artifacts_dir = results_dir / f"{FILE_PREFIX}artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     joblib.dump(scaler, artifacts_dir / f"{FILE_PREFIX}scaler.pkl")
