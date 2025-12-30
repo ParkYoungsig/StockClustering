@@ -150,7 +150,6 @@ class FeatureEngineer:
         qt = QuantileTransformer(n_quantiles=min(100, len(df)), output_distribution='normal', random_state=42)
         
         if mode == 'wide':
-            # 시각화 시 배당주 그룹을 우측으로 밀어버리기 위한 Trick (+2.0 offset)
             x_input = dy.copy()
             x_input[payer] += 2.0 
         else:
@@ -235,7 +234,7 @@ if __name__ == "__main__":
     
     TARGET_DATE = "2024-05-20"
     
-    # Repo 구조: ParkYoungsig/StockClustering
+    # Repo 구조
     loader = GitHubDataLoader(repo_owner='ParkYoungsig', repo_name='StockClustering')
     df = loader.load_date_data(TARGET_DATE)
     
@@ -244,3 +243,4 @@ if __name__ == "__main__":
         viz.run(df, TARGET_DATE)
     else:
         print("[ERR] Failed to load data.")
+
