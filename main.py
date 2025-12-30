@@ -8,7 +8,7 @@ import collect_create_data
 
 # 군집화 알고리즘별 모듈
 import gmm_clustering  # noqa
-import dbscan_clustering  # noqa
+import hdbscan_clustering  # noqa
 import kmeans_clustering  # noqa
 
 # dependencies
