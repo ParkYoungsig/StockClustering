@@ -11,23 +11,28 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from src.gmm import config
-from src.gmm.data_loader import FEATURE_COLUMNS, convert_df_to_snapshots
-from src.gmm.pipeline_logic import select_best_k, train_gmm_per_year
-from src.gmm.processer import (
+from config import DEFAULT_RESULTS_DIR_NAME,DEFAULT_DATA_DIR_NAME
+from config import SNAPSHOT_FREQ,START_YEAR,END_YEAR,FALLBACK_DAYS,K_RANGE
+from config import GMM_COVARIANCE_TYPE,GMM_N_INIT,GMM_MAX_ITER,GMM_REG_COVAR,GMM_ALIGN_METRIC
+from config import MIN_CLUSTER_FRAC,CORR_THRESHOLD, MAX_MISSING_RATIO
+from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST,CLUSTER_NAMES, CLUSTER_INTERPRETATIONS, CLUSTER_COLORS
+
+from gmm.data_loader import FEATURE_COLUMNS, convert_df_to_snapshots
+from gmm.pipeline_logic import select_best_k, train_gmm_per_year
+from gmm.processer import (
     compute_cluster_stats,
     filter_noise,
     get_latest_year_frame,
     preprocess_features,
 )
-from src.gmm.report_metrics import compute_report_metrics
-from src.gmm.reporter import (
+from gmm.report_metrics import compute_report_metrics
+from gmm.reporter import (
     build_cluster_members_all_years,
     build_cluster_members_by_year,
     build_cluster_top_tickers,
     write_text_report,
 )
-from src.gmm.visualizer import (
+from gmm.visualizer import (
     plot_cluster_boxplots,
     plot_cluster_heatmap,
     plot_parallel_coords,
@@ -133,12 +138,12 @@ def run_gmm_pipeline(
             select_best_k(
                 X_feats,
                 years,
-                config.K_RANGE,
+                K_RANGE,
                 manual_k=None,
                 results_dir=results_dir,
             )
         )
-        k_values = list(config.K_RANGE)
+        k_values = list(K_RANGE)
     else:
         final_k = int(manual_k)
         bic_scores, k_values, stability_by_k, elbow_k, best_k_mean, best_k_median = (
@@ -157,7 +162,7 @@ def run_gmm_pipeline(
 
     target_year, df_latest = get_latest_year_frame(df_clean, labels_map)
     df_valid, _cluster_sizes, noise_summary = filter_noise(
-        df_latest, config.MIN_CLUSTER_FRAC
+        df_latest, MIN_CLUSTER_FRAC
     )
 
     means, stds, cluster_counts = compute_cluster_stats(df_valid, feature_cols_used)
@@ -237,37 +242,37 @@ def run_gmm_pipeline(
         best_k_mean=best_k_mean,
         best_k_median=best_k_median,
         label_alignment_feature=sort_feature,
-        cluster_names=config.CLUSTER_NAMES,
+        cluster_names=CLUSTER_NAMES,
         cluster_interpretations=getattr(config, "CLUSTER_INTERPRETATIONS", None),
     )
 
     plot_cluster_heatmap(
-        means, results_dir / "heatmap.png", cluster_names=config.CLUSTER_NAMES
+        means, results_dir / "heatmap.png", cluster_names=CLUSTER_NAMES
     )
     plot_radar_chart(
         means,
         results_dir / "radar.png",
-        cluster_names=config.CLUSTER_NAMES,
-        cluster_colors=config.CLUSTER_COLORS,
+        cluster_names=CLUSTER_NAMES,
+        cluster_colors=CLUSTER_COLORS,
     )
     plot_parallel_coords(
         df_valid,
         feature_cols_used,
         results_dir / "parallel.png",
-        cluster_names=config.CLUSTER_NAMES,
-        cluster_colors=config.CLUSTER_COLORS,
+        cluster_names=CLUSTER_NAMES,
+        cluster_colors=CLUSTER_COLORS,
     )
     plot_risk_return_scatter(
         means,
         results_dir / "risk_return.png",
-        cluster_names=config.CLUSTER_NAMES,
-        cluster_colors=config.CLUSTER_COLORS,
+        cluster_names=CLUSTER_NAMES,
+        cluster_colors=CLUSTER_COLORS,
     )
     plot_cluster_boxplots(
         df_valid,
         feature_cols_used,
         results_dir / "cluster_boxplots.png",
-        cluster_colors=config.CLUSTER_COLORS,
+        cluster_colors=CLUSTER_COLORS,
     )
 
     if "Ticker" in df_clean.columns:
@@ -275,8 +280,8 @@ def run_gmm_pipeline(
             df_clean,
             labels_map,
             results_dir / "sankey.html",
-            cluster_names=config.CLUSTER_NAMES,
-            cluster_colors=config.CLUSTER_COLORS,
+            cluster_names=CLUSTER_NAMES,
+            cluster_colors=CLUSTER_COLORS,
         )
 
     embedding = compute_umap_embedding(X_feats)
@@ -290,8 +295,8 @@ def run_gmm_pipeline(
             embedding,
             labels_array,
             results_dir / "umap.png",
-            cluster_names=config.CLUSTER_NAMES,
-            cluster_colors=config.CLUSTER_COLORS,
+            cluster_names=CLUSTER_NAMES,
+            cluster_colors=CLUSTER_COLORS,
         )
 
     msg = (
@@ -306,7 +311,7 @@ class GMM:
     """엔트리에서 스냅샷 변환 후 파이프라인을 실행하는 얇은 래퍼."""
 
     def __init__(self, df: pd.DataFrame | None = None, results_dir: Path | None = None):
-        self.results_dir = results_dir or Path(config.DEFAULT_RESULTS_DIR_NAME)
+        self.results_dir = results_dir or Path(DEFAULT_RESULTS_DIR_NAME)
         self.results_dir.mkdir(parents=True, exist_ok=True)
         self.load_stats: Dict | None = None
 
@@ -314,9 +319,9 @@ class GMM:
             try:
                 self.df = convert_df_to_snapshots(
                     df,
-                    freq=config.SNAPSHOT_FREQ,
-                    start_year=config.START_YEAR,
-                    end_year=config.END_YEAR,
+                    freq=SNAPSHOT_FREQ,
+                    start_year=START_YEAR,
+                    end_year=END_YEAR,
                 )
             except Exception as e:
                 logger.warning(f"스냅샷 변환 실패, 원본 사용: {e}")

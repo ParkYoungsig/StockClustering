@@ -11,12 +11,22 @@ from tqdm.auto import tqdm as tqdm_auto
 tqdm_auto.pandas()
 warnings.filterwarnings("ignore")
 
-# Module-level constants
-SCRIPT_DIR = Path(__file__).parent.resolve()
-DATA_DIR = SCRIPT_DIR / "data"
-STOCK_LIST_FILE = SCRIPT_DIR / "stock_list.csv"
-FINANCIALS_FILE = SCRIPT_DIR / "financials.xlsx"
-DELIST_REPORT_FILE = SCRIPT_DIR / "stock_delist.md"
+# # Module-level constants
+# SCRIPT_DIR = Path(__file__).parent.resolve()
+# DATA_DIR = SCRIPT_DIR / "data"
+# STOCK_LIST_FILE = SCRIPT_DIR / "stock_list.csv"
+# FINANCIALS_FILE = SCRIPT_DIR / "financials.xlsx"
+# DELIST_REPORT_FILE = SCRIPT_DIR / "stock_delist.md"
+
+# ------------------------------------------------------------------
+# 설정파일(/src/config.py)에서 List 파일과 데이터 파일 위치 가져오기
+#------------------------------------------------------------------- 
+from config  import LIST_FILE_LOCATION, DATA_FILE_LOCATION
+DATA_DIR = Path(DATA_FILE_LOCATION).resolve()
+LIST_DIR = Path(LIST_FILE_LOCATION).resolve()
+STOCK_LIST_FILE    = LIST_DIR / "stock_list.csv"
+FINANCIALS_FILE    = LIST_DIR / "financials.xlsx"
+DELIST_REPORT_FILE = LIST_DIR / "stock_delist.md"
 
 # Technical analysis constants
 SQRT_252 = np.sqrt(252)
@@ -32,7 +42,7 @@ DELISTING_THRESHOLD_DAYS = 10
 
 
 def data_download(start_date="2015-01-01", end_date="2024-12-31"):
-    print(f"작업 디렉토리: {SCRIPT_DIR}")
+    print(f"작업 디렉토리: {DATA_DIR}")
     print("파일 상태:")
     print(f"  ✓ stock_list.csv: {STOCK_LIST_FILE.exists()}")
     print(f"  ✓ financials.xlsx: {FINANCIALS_FILE.exists()}")
@@ -620,7 +630,7 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
 
 
 def data_load():
-    print(f"📍 스크립트 위치: {SCRIPT_DIR}")
+    # print(f"📍 스크립트 위치: {SCRIPT_DIR}")
     print(f"📂 데이터 폴더 탐색 중: {DATA_DIR.absolute()}")
 
     if not DATA_DIR.exists():

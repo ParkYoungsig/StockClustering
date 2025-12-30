@@ -10,7 +10,7 @@ from kmm.kmm_pca_maps_aligned import plot_aligned_pca_maps
 from kmm.kmm_pipeline import load_parquets_to_df_all, rolling_cluster_table
 
 # 박영식 수정된 config.py 파일에서 설정값 가져오기
-from kmm.config import data_folder, dates, feature_cols
+from config import data_folder, dates, feature_cols
 
 
 @dataclass

@@ -214,10 +214,8 @@ class RallyMapVisualizer:
         print("✅ 시각화 완료")
 
 
-# =========================================================
-# 메인 실행부
-# =========================================================
-if __name__ == "__main__":
+
+def init_hdb_clustering() -> pd.DataFrame:
     PlotConfig.set_style()
     
     # 1. GitHub에서 데이터 로드
@@ -226,10 +224,38 @@ if __name__ == "__main__":
     
     # stock_list.csv 파일을 로드합니다.
     df = loader.load_csv('stock_list.csv')
-    
+
+    return df
+
+
+def run_hdb_clustering(df:pd.DataFrame) :
     if not df.empty:
         # 2. 분석 및 시각화 실행
         viz = RallyMapVisualizer()
         viz.run(df)
     else:
         print("데이터를 불러오지 못했습니다.")
+
+
+# =========================================================
+# 메인 실행부
+# =========================================================
+if __name__ == "__main__":
+    # PlotConfig.set_style()
+    
+    # # 1. GitHub에서 데이터 로드
+    # # (ParkYoungsig/StockClustering 레포의 main 브랜치 사용)
+    # loader = GitHubDataLoader(repo_owner='ParkYoungsig', repo_name='StockClustering')
+    
+    # # stock_list.csv 파일을 로드합니다.
+    # df = loader.load_csv('stock_list.csv')
+    df = init_hdb_clustering()
+
+    # if not df.empty:
+    #     # 2. 분석 및 시각화 실행
+    #     viz = RallyMapVisualizer()
+    #     viz.run(df)
+    # else:
+    #     print("데이터를 불러오지 못했습니다.")
+    run_hdb_clustering(df)
+    

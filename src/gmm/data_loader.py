@@ -10,7 +10,11 @@ from typing import Dict, Tuple
 import pandas as pd
 from datasets import load_dataset  # type: ignore
 
-from src.gmm import config
+from config import DEFAULT_RESULTS_DIR_NAME,DEFAULT_DATA_DIR_NAME
+from config import SNAPSHOT_FREQ,START_YEAR,END_YEAR,FALLBACK_DAYS,K_RANGE
+from config import GMM_COVARIANCE_TYPE,GMM_N_INIT,GMM_MAX_ITER,GMM_REG_COVAR,GMM_ALIGN_METRIC
+from config import MIN_CLUSTER_FRAC,CORR_THRESHOLD, MAX_MISSING_RATIO
+from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST,CLUSTER_NAMES, CLUSTER_INTERPRETATIONS, CLUSTER_COLORS
 
 logger = logging.getLogger(__name__)
 
@@ -193,9 +197,9 @@ def _load_local_raw_merged(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
 def convert_df_to_snapshots(
     df: pd.DataFrame,
     *,
-    freq: str = config.SNAPSHOT_FREQ,
-    start_year: int = config.START_YEAR,
-    end_year: int | None = config.END_YEAR,
+    freq: str = SNAPSHOT_FREQ,
+    start_year: int = START_YEAR,
+    end_year: int | None = END_YEAR,
 ) -> pd.DataFrame:
     if df.empty:
         return df
@@ -304,10 +308,10 @@ def _clip_and_scale(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
 
 def load_snapshots(
     data_dir: Path = DEFAULT_DATA_DIR,
-    start_year: int = config.START_YEAR,
-    end_year: int | None = config.END_YEAR,
-    fallback_days: int = config.FALLBACK_DAYS,  # kept for signature compatibility
-    freq: str = config.SNAPSHOT_FREQ,
+    start_year: int = START_YEAR,
+    end_year: int | None = END_YEAR,
+    fallback_days: int = FALLBACK_DAYS,  # kept for signature compatibility
+    freq: str = SNAPSHOT_FREQ,
 ) -> Tuple[pd.DataFrame, Dict]:
     """3단 방어 로직으로 스냅샷 데이터프레임을 반환합니다.
 
