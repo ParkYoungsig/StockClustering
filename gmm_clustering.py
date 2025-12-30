@@ -14,12 +14,12 @@ import pandas as pd
 from src.gmm import config
 from src.gmm.data_loader import FEATURE_COLUMNS, convert_df_to_snapshots
 from src.gmm.pipeline_logic import select_best_k, train_gmm_per_year
-from src.gmm.postprocessor import (
+from src.gmm.processer import (
     compute_cluster_stats,
     filter_noise,
     get_latest_year_frame,
+    preprocess_features,
 )
-from src.gmm.preprocessor import preprocess_features
 from src.gmm.report_metrics import compute_report_metrics
 from src.gmm.reporter import (
     build_cluster_members_all_years,

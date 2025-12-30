@@ -1,11 +1,12 @@
 """
-데이터 전처리(Preprocessing) 모듈
-- Feature Scaling (QuantileTransformer)
-- PCA (Principal Component Analysis) 차원 축소
+데이터 전처리/후처리 모듈 통합본.
+- 전처리: 스케일링, 이상치 제거, (옵션) PCA
+- 후처리: 최신 연도 라벨 병합, 노이즈 필터, 요약 통계
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -14,6 +15,13 @@ from sklearn.ensemble import IsolationForest
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import QuantileTransformer
 
+logger = logging.getLogger(__name__)
+
+
+# ===========================
+# 전처리(Preprocessing)
+# ===========================
+
 
 def _choose_pca_components(
     explained_variance_ratio: np.ndarray,
@@ -21,7 +29,7 @@ def _choose_pca_components(
     max_components: int = 3,
     variance_threshold: float = 0.90,
 ) -> int:
-    """설명된 분산 비율(Explained Variance)을 기준으로 적절한 PCA 차원 수를 결정합니다."""
+    """설명된 분산 비율을 기준으로 적절한 PCA 차원 수를 결정합니다."""
     cum_var = np.cumsum(explained_variance_ratio)
     needed = int(np.searchsorted(cum_var, variance_threshold) + 1)
     return int(max(min_components, min(max_components, needed)))
@@ -48,19 +56,8 @@ def preprocess_features(
     Dict,
     List[str],
 ]:
-    """
-    Feature 데이터를 정제하고 스케일링 및 차원 축소를 수행합니다.
+    """Feature 데이터를 정제하고 스케일링 및 차원 축소를 수행합니다."""
 
-    [처리 단계]
-    1. 필수 파생변수(NATR) 확인/계산
-    2. 이상치 필터링(NATR > 20, Disparity_60d > 30)
-    3. 결측치(NaN/Inf) 제거 및 데이터 타입 변환
-    4. Quantile Scaling (정규분포화)
-    5. (옵션) PCA 차원 축소 수행
-
-    Returns:
-        Tuple: (정제된 DF, 변환된 Numpy 배열, PC 데이터프레임, 스케일러(또는 그룹별 스케일러 dict), PCA 모델, 통계 정보, 사용된 Feature 목록)
-    """
     df = raw.copy()
     removed_low_var: List[str] = []
     removed_high_corr: List[str] = []
@@ -239,3 +236,73 @@ def preprocess_features(
         }
     )
     return df, X_pca, pcs_df, scaler, pca, stats, feature_cols_used
+
+
+# ===========================
+# 후처리(Postprocessing)
+# ===========================
+
+
+def get_latest_year_frame(
+    df_clean: pd.DataFrame, labels_per_year: Dict[int, pd.Series]
+) -> Tuple[int, pd.DataFrame]:
+    """전체 데이터에서 최신 연도 데이터를 추출하고 클러스터 라벨을 병합합니다."""
+    target_year = int(df_clean["Year"].max())
+
+    if not labels_per_year:
+        raise ValueError("라벨 정보가 없습니다.")
+
+    available_years = sorted(labels_per_year.keys())
+    selected_year = (
+        target_year if target_year in labels_per_year else available_years[-1]
+    )
+
+    if selected_year != target_year:
+        logger.warning(
+            "최신 연도(%s)에 라벨 없음 → 가장 최근 사용 가능 연도(%s)로 대체",
+            target_year,
+            selected_year,
+        )
+
+    mask_year = df_clean["Year"] == selected_year
+    df_latest = df_clean.loc[mask_year].copy()
+    df_latest["cluster"] = labels_per_year[selected_year]
+    return selected_year, df_latest
+
+
+def filter_noise(
+    df_latest: pd.DataFrame, min_cluster_frac: float
+) -> Tuple[pd.DataFrame, pd.Series, Dict]:
+    """너무 작은 군집을 노이즈(-1)로 처리하여 제거합니다."""
+    size_threshold = max(1, int(len(df_latest) * min_cluster_frac))
+    cluster_sizes_raw = df_latest["cluster"].value_counts()
+
+    small_clusters = cluster_sizes_raw[
+        cluster_sizes_raw < size_threshold
+    ].index.tolist()
+
+    df_flagged = df_latest.copy()
+    if small_clusters:
+        df_flagged.loc[df_flagged["cluster"].isin(small_clusters), "cluster"] = -1
+
+    cluster_sizes = df_flagged["cluster"].value_counts().sort_index()
+    noise_count = int(cluster_sizes.get(-1, 0))
+    df_valid = df_flagged[df_flagged["cluster"] != -1]
+
+    summary = {
+        "size_threshold": size_threshold,
+        "noise_rows": noise_count,
+        "removed_clusters": small_clusters,
+    }
+    return df_valid, cluster_sizes, summary
+
+
+def compute_cluster_stats(
+    df_valid: pd.DataFrame, feature_cols: List[str]
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """클러스터별 요약 통계(평균/표준편차/개수)를 계산합니다."""
+
+    means = df_valid.groupby("cluster")[feature_cols].mean()
+    stds = df_valid.groupby("cluster")[feature_cols].std(ddof=0)
+    counts = df_valid["cluster"].value_counts().sort_index()
+    return means, stds, counts
