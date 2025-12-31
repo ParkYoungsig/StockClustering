@@ -85,69 +85,60 @@
 
 `data_loader.convert_df_to_snapshots()` 기준:
 
-- `"M"` (월말 스냅샷)
-  - 각 Ticker별로 월(YearMonth)마다 마지막 관측치 1개를 선택
-  - 결과 DF에 `YearMonth`를 **항상 `YYYY-MM` 문자열로 생성**
+ # GMM 모듈 (src/gmm) — 간단 안내
 
-- `"Y"` (연말 스냅샷)
-  - 각 Ticker별로 연(Year)마다 마지막 관측치 1개를 선택
-  - 혼선 방지를 위해 결과 DF에서 `YearMonth` 컬럼이 있으면 제거
+ 이 폴더는 연/월 스냅샷을 만들어 연도별로 GMM을 학습하고, 연도 간 라벨을 정렬해 시장 상태(regime)를 추적합니다.
 
----
+ 핵심 요약
+ - 리포트: Markdown 단일 파일(`gmm_report.md`)만 생성합니다.
+ - K 선택 근거: BIC(mean) + Silhouette(mean) (AIC/Stability 제거).
+ - 전이(persistence) 출력은 리포트에서 제외했습니다. 다만 ex-post(Forward return / Drawdown) 요약은 포함됩니다.
+ - 출력 구조: results root에는 핵심 8개만 남기고 나머지는 `gmm_appendix/`로 이동합니다.
 
-## 사용 피처(기본)
+ 주요 파일
+ - 진입점: `src/gmm_clustering.py` (`GMM` / `run_gmm_pipeline()`)
+ - 주요 모듈: `data_loader.py`, `processer.py`, `pipeline_logic.py`, `model.py`, `visualizer.py`, `report_metrics.py`, `reporter.py`, `robustness.py`
 
-`data_loader.py`의 `FEATURE_COLUMNS` 기준(존재하는 컬럼만 사용):
+ 출력(요약)
+ - Core (results root)
+   - `gmm_bic_curve_mean.png`, `gmm_silhouette_curve_mean.png`, `gmm_cluster_boxplots.png`,
+     `gmm_heatmap.png`, `gmm_robustness_vs_window.png`, `gmm_sankey.html`, `gmm_umap.png`,
+     `gmm_report.md`
+ - Appendix (`gmm_appendix/`)
+   - `gmm_cluster_members_by_year.csv` (공유용 단일 CSV)
+   - 기타 시각화/아티팩트(UMAP/parallel/radar, rolling/period robustness outputs, `gmm_artifacts/`)
 
-- `Return_120d`, `Return_20d`
-- `ADX_14`, `MFI_14`
-- `Disparity_60d`, `vol_60_sqrt252`, `NATR`
-- `Sharpe_60d`, `Sortino_60d`, `Zscore_60d`
+ CSV 포맷 (`gmm_cluster_members_by_year.csv`)
+ - 행: `year`(한 행 = 한 연도)
+ - 컬럼: `year`, `cluster_0`, `cluster_1`, ...
+ - 셀 값: 줄바꿈으로 구분된 `종목명 티커 (YYYY)` 리스트
 
-참고:
-- 입력에 `NATR`가 없고 `NATR_14`만 있으면 `NATR`을 자동 보강합니다.
+ 실행
+ - 권장 (프로젝트 루트):
+ ```bash
+ python -m src.main
+ ```
+ - 직접 호출 예시:
+ ```python
+ from pathlib import Path
+ from gmm_clustering import GMM
 
----
+ gmm = GMM(df, results_dir=Path("./output"))
+ print(gmm.run(manual_k=4))  # 기본은 K=4
+ ```
 
-## 파이프라인 흐름(요약)
+ Robustness
+ - 기간/롤링 robustness는 `src/config.py` 토글로 제어됩니다. period-slicing은 옵션이며 실행 시간이 길 수 있습니다.
 
-1) **로드/스냅샷**
-- `data_loader.load_snapshots()`
-- 로드 후 `convert_df_to_snapshots()`로 연말/월말 스냅샷 데이터 생성
+ 기타
+ - `report_metrics.py`는 Silhouette 및 probability-based quality 지표와 ex-post(Forward return/drawdown)를 계산해 반환합니다.
+ - 일부 시각화는 선택 패키지(UMAP, Plotly) 설치 여부에 따라 자동으로 생략됩니다.
 
-2) **전처리**
-- `processer.preprocess_features()`
-- 결측 제거 + (옵션) IsolationForest로 이상치 제거 + 스케일링
-- 현재 엔트리(`gmm_clustering.py`)에서는 `use_pca=False`로 사용
+ 의존성
+ - 필수: `numpy`, `pandas`, `scikit-learn`, `scipy`, `matplotlib`, `seaborn`, `joblib`, `pyarrow`
+ - 선택: `umap-learn`, `plotly`
 
-3) **학습/정렬**
-- `pipeline_logic.train_gmm_per_year()`
-  - 연도별로 GMM 학습
-  - 첫 연도는 특정 피처 평균 기준으로 라벨 정렬
-  - 이후 연도는 **헝가리안 매칭으로 중심을 정렬**해 라벨 일관성 유지
-  - 이전 연도의 중심을 이용한 warm start(`means_init`)를 적용
-
-4) **후처리/리포트/시각화**
-- `processer.get_latest_year_frame()`로 최신 연도 프레임 구성
-- `processer.filter_noise()`로 너무 작은 군집을 노이즈 처리
-- `reporter.write_text_report()`로 `gmm_report.txt` 생성
-- `visualizer.py`에서 주요 그래프 생성 (파일명 접두사 `gmm_`)
-
----
-
-## 산출물(결과 파일)
-
-기본적으로 결과는 `gmm_clustering.GMM`이 사용하는 `results_dir` 아래에 저장됩니다.
-
-### 경로 규칙(중요)
-
-`src/config.py` 기준으로 다음 규칙을 사용합니다.
-
-- `PROJECT_ROOT = Path(__file__).resolve().parents[2]`
-  - 현재 레포 구조에서 `src/config.py`는 `<...>\Team_Project\StockClustering\src\config.py`에 있으므로,
-    `PROJECT_ROOT`는 보통 `<...>\Team_Project` 레벨을 가리킵니다.
-- 기본 결과 폴더: `DEFAULT_RESULTS_DIR_NAME = <PROJECT_ROOT>/output`
-- 기본 데이터 폴더: `DEFAULT_DATA_DIR_NAME = <PROJECT_ROOT>/data`
+ 원하시면 이 README를 더 짧게 요약한 버전으로도 만들어드릴게요.
 
 즉, 실행 위치가 `StockClustering` 폴더여도 **기본 결과는 Team_Project 레벨의 `output/`**로 떨어지는 것이 정상입니다.
 

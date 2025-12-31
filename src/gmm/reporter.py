@@ -52,6 +52,11 @@ def write_text_report(
     cluster_means: pd.DataFrame,
     cluster_stds: pd.DataFrame | None,
     cluster_counts: pd.Series,
+    *,
+    target_year: int | None = None,
+    cluster_means_10y: pd.DataFrame | None = None,
+    cluster_stds_10y: pd.DataFrame | None = None,
+    cluster_counts_10y_avg: pd.Series | None = None,
     cluster_members: Dict[int, List[str]],
     noise_summary: Dict | None = None,
     quality_summary: Dict | None = None,
@@ -63,7 +68,6 @@ def write_text_report(
     label_alignment_feature: str | None = None,
     cluster_names: Optional[Dict[int, str]] = None,
     cluster_interpretations: Optional[Dict[int, str]] = None,
-    *,
     include_output_file_list: bool = True,
 ) -> None:
     """GMM 파이프라인 결과를 텍스트 리포트로 저장합니다.
@@ -92,6 +96,10 @@ def write_text_report(
             cluster_means=cluster_means,
             cluster_stds=cluster_stds,
             cluster_counts=cluster_counts,
+            target_year=target_year,
+            cluster_means_10y=cluster_means_10y,
+            cluster_stds_10y=cluster_stds_10y,
+            cluster_counts_10y_avg=cluster_counts_10y_avg,
             cluster_members=cluster_members,
             noise_summary=noise_summary,
             quality_summary=quality_summary,
@@ -121,6 +129,11 @@ def _write_report(
     cluster_means=None,
     cluster_stds=None,
     cluster_counts=None,
+    *,
+    target_year: int | None = None,
+    cluster_means_10y=None,
+    cluster_stds_10y=None,
+    cluster_counts_10y_avg=None,
     cluster_members=None,
     noise_summary=None,
     quality_summary=None,
@@ -146,8 +159,14 @@ def _write_report(
         f.write("GMM 스냅샷 리포트\n")
         f.write("================\n\n")
         f.write("데이터 요약:\n")
-    f.write(f"- 읽은 파일 수: {ls.get('total_files')}\n")
-    f.write(f"- 사용 스냅샷 수: {ls.get('snapshots')}\n")
+
+    # load_stats 키가 변경되어도 대응하도록 주요 카운트를 보정합니다.
+    # data_loader는 과거에 `rows_raw`/`rows_snapshots`를 반환할 수 있습니다.
+    total_files_val = ls.get("total_files") or ls.get("rows_raw")
+    snapshots_val = ls.get("snapshots") or ls.get("rows_snapshots")
+
+    f.write(f"- 읽은 파일 수: {total_files_val}\n")
+    f.write(f"- 사용 스냅샷 수: {snapshots_val}\n")
     if "start_year" in ls:
         f.write(f"- 분석 연도 범위: {ls.get('start_year')} - {ls.get('end_year')}\n")
         f.write(f"- 폴백 윈도우(일): {ls.get('fallback_days')}\n")
@@ -156,6 +175,9 @@ def _write_report(
             f"- 기준일: {ls.get('reference_date')} (폴백: {ls.get('fallback_date')})\n"
         )
     f.write(f"- 결측 제거 후 최종 행 수: {ps.get('rows_after_dropna')}\n\n")
+
+    # target_year 라벨 준비
+    year_label = str(target_year) if target_year is not None else "latest"
 
     # 피처 정리
     if md:
@@ -395,30 +417,65 @@ def _write_report(
     else:
         f.write("PCA: 생략(표준화된 원본 팩터 사용)\n\n")
 
-    f.write("클러스터별 피처 평균:\n")
+    # 클러스터별 피처 평균: 최신 연도 표와 10년치 평균 표를 분리 출력
     if cluster_means is not None:
         means_disp = cluster_means.copy()
-        means_disp.index = [
-            _cluster_label(cid, cluster_names) for cid in means_disp.index
-        ]
+        means_disp.index = [_cluster_label(cid, cluster_names) for cid in means_disp.index]
+        f.write(f"클러스터별 피처 평균 ({year_label}):\n")
         f.write(means_disp.to_string())
+        f.write("\n\n")
+    if cluster_means_10y is not None:
+        cm10 = cluster_means_10y.copy()
+        cm10.index = [_cluster_label(cid, cluster_names) for cid in cm10.index]
+        f.write("클러스터별 피처 평균 (10년치 평균):\n")
+        f.write(cm10.to_string())
         f.write("\n")
 
     if cluster_stds is not None and not getattr(cluster_stds, "empty", True):
-        f.write("\n클러스터별 피처 표준편차:\n")
         stds_disp = cluster_stds.copy()
-        stds_disp.index = [
-            _cluster_label(cid, cluster_names) for cid in stds_disp.index
-        ]
+        stds_disp.index = [_cluster_label(cid, cluster_names) for cid in stds_disp.index]
+        f.write("\n클러스터별 피처 표준편차 ({year_label}):\n")
         f.write(stds_disp.to_string())
+        f.write("\n\n")
+    if cluster_stds_10y is not None and not getattr(cluster_stds_10y, "empty", True):
+        s10 = cluster_stds_10y.copy()
+        s10.index = [_cluster_label(cid, cluster_names) for cid in s10.index]
+        f.write("클러스터별 피처 표준편차 (10년치 평균):\n")
+        f.write(s10.to_string())
         f.write("\n")
 
-    f.write("\n클러스터별 개수(최신 연도):\n")
+    f.write("\n클러스터별 개수(최신 연도 vs 10년 평균):\n")
     if cluster_counts is not None:
-        for cid, count in (
-            cluster_counts.items() if hasattr(cluster_counts, "items") else []
-        ):
-            f.write(f"  {_cluster_label(cid, cluster_names)}: {count}개\n")
+        # Normalize cluster_counts to a dict {cluster_id: count}
+        counts_map: Dict[int, int] = {}
+        try:
+            if hasattr(cluster_counts, "items"):
+                counts_map = {int(k): int(v) for k, v in cluster_counts.items()}
+            elif hasattr(cluster_counts, "shape") or hasattr(cluster_counts, "__iter__"):
+                # numpy array or list-like: assume index 0..N-1
+                counts_map = {int(i): int(v) for i, v in enumerate(list(cluster_counts))}
+        except Exception:
+            counts_map = {}
+
+        latest_total = sum(counts_map.values()) if counts_map else None
+
+        for cid, count in sorted(counts_map.items()):
+            pct = f"{int(round((count / latest_total) * 100))}%" if latest_total and latest_total > 0 else "(n/a)"
+            out_line = f"  {_cluster_label(cid, cluster_names)}: {int(count)}개 ({pct})"
+            # append 10-year average if available
+            if cluster_counts_10y_avg is not None:
+                try:
+                    avg10 = (
+                        cluster_counts_10y_avg.get(int(cid))
+                        if hasattr(cluster_counts_10y_avg, "get")
+                        else cluster_counts_10y_avg[int(cid)]
+                    )
+                    if avg10 is not None:
+                        avg_pct = f"{int(round((avg10 / latest_total) * 100))}%" if latest_total and latest_total > 0 else "(n/a)"
+                        out_line += f"  | 10yr avg: {int(round(avg10))}개 ({avg_pct})"
+                except Exception:
+                    pass
+            f.write(out_line + "\n")
 
     if quality_summary:
         f.write("\n군집 품질(Separation & Confidence):\n")
@@ -562,33 +619,32 @@ def write_period_slicing_robustness_report(
     summary: Dict,
 ) -> None:
     """기간 슬라이싱 기반 robustness 비교 결과를 텍스트로 저장합니다."""
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as f:
-        f.write("기간 슬라이싱 Robustness 리포트\n")
-        f.write("=========================\n\n")
+    md_path = output_path.with_suffix(".md")
+    with md_path.open("w", encoding="utf-8") as f:
+        f.write("# 기간 슬라이싱 Robustness 리포트\n\n")
 
         cases = summary.get("cases") or {}
         labels = summary.get("labels") or []
 
-        f.write("케이스 요약(각 기간별 재학습):\n")
-        f.write("  Case | Years | BestK | LatestYear | n_latest\n")
-        f.write("  -----|-------|------:|-----------:|--------:\n")
+        f.write("## 케이스 요약(각 기간별 재학습)\n")
+        f.write("| Case | Years | BestK | LatestYear | n_latest |\n")
+        f.write("|------|-------|------:|-----------:|--------:|\n")
         for name in labels or list(cases.keys()):
             row = cases.get(name) or {}
             years_span = f"{row.get('start_year')}~{row.get('end_year')}"
             f.write(
-                f"  {name} | {years_span:>9} | {str(row.get('best_k')):>5} | {str(row.get('latest_year')):>10} | {str(row.get('n_latest')):>7}\n"
+                f"| {name} | {years_span:>9} | {str(row.get('best_k')):>5} | {str(row.get('latest_year')):>10} | {str(row.get('n_latest')):>7} |\n"
             )
         f.write("\n")
 
         pair = summary.get("pairwise") or {}
         if pair:
-            f.write("케이스 간 중심(centroid) 유사도(클러스터 매칭 후 평균):\n")
+            f.write("## 케이스 간 중심(centroid) 유사도 (클러스터 매칭 후 평균)\n")
             if pair.get("centroid_cosine_mean") is not None:
-                f.write(f"  cosine(mean matched): {pair.get('centroid_cosine_mean')}\n")
+                f.write("- cosine(mean matched): (matrix attached as artifact)\n")
             if pair.get("centroid_corr_mean") is not None:
-                f.write(f"  corr(mean matched): {pair.get('centroid_corr_mean')}\n")
+                f.write("- corr(mean matched): (matrix attached as artifact)\n")
             f.write("\n")
 
 

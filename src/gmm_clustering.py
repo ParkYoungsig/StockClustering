@@ -247,6 +247,41 @@ def run_gmm_pipeline(
     members_by_year = build_cluster_members_by_year(df_clean, labels_map)
     top_tickers_map = build_cluster_top_tickers(df_valid, top_n=10)
 
+    # 10년치(또는 사용 가능한 최근 10년) 평균/표준편차/클러스터 개수 산출
+    means_10y = None
+    stds_10y = None
+    counts_10y_avg = None
+    try:
+        min_year = min(int(y) for y in labels_map.keys())
+        max_year = int(target_year)
+        start_10y = max(min_year, max_year - 9)
+        frames = []
+        per_year_counts = {}
+        for y in range(start_10y, max_year + 1):
+            labels = labels_map.get(int(y))
+            if labels is None:
+                continue
+            common_idx = df_clean.index.intersection(labels.index)
+            if len(common_idx) == 0:
+                continue
+            df_y = df_clean.loc[common_idx].copy()
+            df_y["cluster"] = labels.loc[common_idx].astype(int)
+            frames.append(df_y)
+            per_year_counts[int(y)] = df_y.groupby("cluster").size()
+
+        if frames:
+            df_10y_all = pd.concat(frames, axis=0)
+            if not df_10y_all.empty:
+                means_10y = df_10y_all.groupby("cluster")[feature_cols_used].mean()
+                stds_10y = df_10y_all.groupby("cluster")[feature_cols_used].std()
+            if per_year_counts:
+                counts_df = pd.DataFrame(per_year_counts).fillna(0).T
+                counts_10y_avg = counts_df.mean(axis=0)
+    except Exception:
+        means_10y = None
+        stds_10y = None
+        counts_10y_avg = None
+
     # CSV는 제출/공유용으로 members_by_year만 저장합니다.
     # 포맷: year + cluster_0~cluster_3 컬럼(각 셀은 줄바꿈으로 멤버 나열)
     if members_by_year:
@@ -385,7 +420,7 @@ def run_gmm_pipeline(
         f"{FILE_PREFIX}robustness_vs_window.png",
         f"{FILE_PREFIX}sankey.html",
         f"{FILE_PREFIX}umap.png",
-        f"{FILE_PREFIX}report.txt",
+        f"{FILE_PREFIX}report.md",
     }
 
     def _move_to_appendix(p: Path) -> None:
@@ -409,7 +444,7 @@ def run_gmm_pipeline(
 
     # 리포트는 모든 산출물 저장 이후 작성(산출물 리스트 누락 방지)
     write_text_report(
-        results_dir / f"{FILE_PREFIX}report.txt",
+        results_dir / f"{FILE_PREFIX}report.md",
         load_stats or {},
         prep_stats or {},
         bic_scores or [],
@@ -420,11 +455,14 @@ def run_gmm_pipeline(
         means,
         stds,
         cluster_counts,
-        top_tickers_map,
+        cluster_members=top_tickers_map,
+        target_year=target_year,
+        cluster_means_10y=means_10y,
+        cluster_stds_10y=stds_10y,
+        cluster_counts_10y_avg=counts_10y_avg,
         noise_summary=noise_summary,
         quality_summary=report_metrics.get("quality_summary"),
         silhouette_summary=report_metrics.get("silhouette_summary"),
-        # transition_summary 전달 삭제
         ex_post_summary=report_metrics.get("ex_post_summary"),
         robustness_summary=robustness_summary,
         rolling_robustness_summary=rolling_robustness_summary,
