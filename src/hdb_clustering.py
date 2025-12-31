@@ -10,11 +10,15 @@ from sklearn.preprocessing import StandardScaler, RobustScaler
 from adjustText import adjust_text
 
 # 설정 파일 불러오기 (DBSCAN 전용 설정)
-from dbscan import config
+# import config
+from config import (DATA_FOLDER,OUTPUT_FOLDER, X_FEATS,Y_FEATS)
+from config import (TARGET_CLUSTERS_MIN,TARGET_CLUSTERS_MAX)
+from config import (EPS_RANGE_START, EPS_RANGE_END, EPS_STEP, MIN_SAMPLES)
+from config import (FONT_FAMILY, FIG_SIZE,CSV_ENCODING)
 
-plt.rcParams["font.family"] = config.FONT_FAMILY
+
+plt.rcParams["font.family"] = FONT_FAMILY
 plt.rcParams["axes.unicode_minus"] = False
-
 
 class DataProcessor:
     @staticmethod
@@ -42,7 +46,7 @@ class DataProcessor:
     @staticmethod
     def load_snapshot(target_date_str):
         target_date = pd.to_datetime(target_date_str)
-        data_dir = os.path.abspath(config.DATA_FOLDER)
+        data_dir = os.path.abspath(DATA_FOLDER)
         files = glob.glob(os.path.join(data_dir, "*.parquet"))
 
         print(f"[INFO] 데이터 폴더: {data_dir}")
@@ -82,13 +86,13 @@ class DataProcessor:
                         break
 
                 x_val = 0.0
-                for f in config.X_FEATS:
+                for f in X_FEATS:
                     if f in row.index:
                         x_val = DataProcessor._safe_float(row[f])
                         break
 
                 y_val = 0.0
-                for f in config.Y_FEATS:
+                for f in Y_FEATS:
                     if f in row.index:
                         y_val = DataProcessor._safe_float(row[f])
                         break
@@ -133,17 +137,17 @@ class AutoDBSCAN:
         found = False
 
         print(
-            f"[TUNING] 목표 군집: {config.TARGET_CLUSTERS_MIN}~{config.TARGET_CLUSTERS_MAX}개 찾는 중..."
+            f"[TUNING] 목표 군집: {TARGET_CLUSTERS_MIN}~{TARGET_CLUSTERS_MAX}개 찾는 중..."
         )
 
         for eps in np.arange(
-            config.EPS_RANGE_START, config.EPS_RANGE_END, config.EPS_STEP
+            EPS_RANGE_START, EPS_RANGE_END, EPS_STEP
         ):
-            db = DBSCAN(eps=eps, min_samples=config.MIN_SAMPLES).fit(X_scaled)
+            db = DBSCAN(eps=eps, min_samples=MIN_SAMPLES).fit(X_scaled)
             labels = db.labels_
             n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
 
-            if config.TARGET_CLUSTERS_MIN <= n_clusters <= config.TARGET_CLUSTERS_MAX:
+            if TARGET_CLUSTERS_MIN <= n_clusters <= TARGET_CLUSTERS_MAX:
                 best_labels = labels
                 best_eps = eps
                 found = True
@@ -156,7 +160,7 @@ class AutoDBSCAN:
 
         if not found and best_labels is None:
             print(" -> 기본값 실행")
-            db = DBSCAN(eps=0.5, min_samples=config.MIN_SAMPLES).fit(X_scaled)
+            db = DBSCAN(eps=0.5, min_samples=MIN_SAMPLES).fit(X_scaled)
             best_labels = db.labels_
             best_eps = 0.5
         elif not found:
@@ -192,7 +196,7 @@ class AutoDBSCAN:
 
 class Visualizer:
     def plot(self, df, cluster_info, date_str, eps):
-        plt.figure(figsize=config.FIG_SIZE)
+        plt.figure(figsize=FIG_SIZE)
 
         # 1. 노이즈 (흐릿하게) - 원본 값 사용하되 너무 큰 건 잘림
         noise = df[df["Cluster"] == -1]
@@ -279,7 +283,7 @@ class Visualizer:
         plt.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=10)
         plt.grid(True, linestyle="--", alpha=0.3)
 
-        out_dir = os.path.abspath(config.OUTPUT_FOLDER)
+        out_dir = os.path.abspath(OUTPUT_FOLDER)
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
 
@@ -289,12 +293,12 @@ class Visualizer:
         cluster_info.to_csv(
             os.path.join(out_dir, f"cluster_summary_{date_str}.csv"),
             index=False,
-            encoding=config.CSV_ENCODING,
+            encoding=CSV_ENCODING,
         )
         df.to_csv(
             os.path.join(out_dir, f"cluster_details_{date_str}.csv"),
             index=False,
-            encoding=config.CSV_ENCODING,
+            encoding=CSV_ENCODING,
         )
 
         print(f"[저장 완료] {save_path}")

@@ -82,3 +82,60 @@ KeyError: 'Year'
 2025-12-31 10:46:12 - StockClustering - INFO - main:72 - Args Data Collect : True
 2025-12-31 10:46:12 - StockClustering - INFO - main:82 - Start collecting
 2025-12-31 10:58:14 - StockClustering - INFO - main:86 - End   collecting
+2025-12-31 14:50:07 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 14:50:07 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 14:50:09 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 14:50:09 - StockClustering - INFO - main:101 - Start KMeans clustering
+2025-12-31 14:50:58 - StockClustering - INFO - main:104 - End   KMeans clustering
+2025-12-31 14:50:58 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 14:51:39 - StockClustering - ERROR - main:126 - Fatal error: only 0-dimensional arrays can be converted to Python scalars
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 488, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 179, in run_gmm_pipeline
+    labels_map, probs_map, _quality_map, last_model, sort_feature = train_gmm_per_year(
+                                                                    ~~~~~~~~~~~~~~~~~~^
+        X_feats, years, df_clean.index, feature_cols_used, final_k
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\pipeline_logic.py", line 184, in train_gmm_per_year
+    mapping = align_clusters(
+        prev_centers,
+    ...<3 lines>...
+        metric=config.GMM_ALIGN_METRIC,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\model.py", line 423, in align_clusters
+    cost_matrix[i, j] = bhattacharyya_distance(
+                        ~~~~~~~~~~~~~~~~~~~~~~^
+        curr_centers[i],
+        ^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        _cov_mat(prev_covs[j]),
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\model.py", line 456, in bhattacharyya_distance
+    term1 = 0.125 * float(dm.T @ inv_S @ dm)
+                    ~~~~~^^^^^^^^^^^^^^^^^^^
+TypeError: only 0-dimensional arrays can be converted to Python scalars
+2025-12-31 14:52:39 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 14:52:39 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 14:52:41 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 14:52:41 - StockClustering - INFO - main:101 - Start KMeans clustering
+2025-12-31 14:53:28 - StockClustering - INFO - main:104 - End   KMeans clustering
+2025-12-31 14:53:28 - StockClustering - INFO - main:116 - Start generating report 
+2025-12-31 14:54:00 - StockClustering - INFO - main:119 - End generating report 
+2025-12-31 14:55:23 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 14:55:23 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 14:55:25 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 14:55:25 - StockClustering - INFO - main:101 - Start KMeans clustering
+2025-12-31 14:56:11 - StockClustering - INFO - main:104 - End   KMeans clustering
+2025-12-31 14:56:11 - StockClustering - INFO - main:117 - Start generating report 
+2025-12-31 14:56:11 - StockClustering - INFO - main:119 - End generating report 
