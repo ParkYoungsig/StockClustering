@@ -12,7 +12,20 @@ import numpy as np
 import pandas as pd
 from sklearn.mixture import GaussianMixture
 
-import config
+from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
+from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, K_RANGE
+# 이차 통함에서 누락확인 되어 추가 (아래 1라인만)
+from config import GMM_COVARIANCE_TYPE, GMM_N_INIT, GMM_MAX_ITER, GMM_REG_COVAR, GMM_ALIGN_METRIC
+from config import MIN_CLUSTER_FRAC
+from config import (
+    CLUSTER_NAMES,
+    CLUSTER_INTERPRETATIONS,
+    CLUSTER_COLORS,
+)
+from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST
+from config import ROBUSTNESS_WINDOW_YEARS, ROBUSTNESS_EXCLUDE_EVAL_YEAR
+from config import ROBUSTNESS_PERIOD_SLICING_ENABLED
+from config import ROBUSTNESS_ROLLING_WINDOWS_ENABLED
 
 from gmm.model import (
     align_clusters,
@@ -150,17 +163,17 @@ def train_gmm_per_year(
                 year,
                 X_year.shape[0],
                 min_required,
-                config.SNAPSHOT_FREQ,
+                SNAPSHOT_FREQ,
             )
             continue
 
         model = GaussianMixture(
             n_components=k,
-            covariance_type=config.GMM_COVARIANCE_TYPE,
+            covariance_type=GMM_COVARIANCE_TYPE,
             random_state=42,
-            n_init=config.GMM_N_INIT,
-            max_iter=config.GMM_MAX_ITER,
-            reg_covar=config.GMM_REG_COVAR,
+            n_init=GMM_N_INIT,
+            max_iter=GMM_MAX_ITER,
+            reg_covar=GMM_REG_COVAR,
             means_init=prev_centers,
             init_params="kmeans",
         )
@@ -186,7 +199,7 @@ def train_gmm_per_year(
                 prev_covs,
                 model.means_,
                 model.covariances_,
-                metric=config.GMM_ALIGN_METRIC,
+                metric=GMM_ALIGN_METRIC,
             )
             aligned_labels = remap_labels(raw_labels, mapping)
             aligned_proba = np.zeros_like(proba_raw)

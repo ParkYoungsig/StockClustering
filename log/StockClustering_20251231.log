@@ -139,3 +139,139 @@ TypeError: only 0-dimensional arrays can be converted to Python scalars
 2025-12-31 14:56:11 - StockClustering - INFO - main:104 - End   KMeans clustering
 2025-12-31 14:56:11 - StockClustering - INFO - main:117 - Start generating report 
 2025-12-31 14:56:11 - StockClustering - INFO - main:119 - End generating report 
+2025-12-31 15:15:50 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 15:15:50 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 15:15:52 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 15:15:52 - StockClustering - INFO - main:101 - Start KMeans clustering
+2025-12-31 15:16:42 - StockClustering - INFO - main:104 - End   KMeans clustering
+2025-12-31 15:16:42 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 15:17:29 - StockClustering - ERROR - main:126 - Fatal error: only 0-dimensional arrays can be converted to Python scalars
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 488, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 179, in run_gmm_pipeline
+    labels_map, probs_map, _quality_map, last_model, sort_feature = train_gmm_per_year(
+                                                                    ~~~~~~~~~~~~~~~~~~^
+        X_feats, years, df_clean.index, feature_cols_used, final_k
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\pipeline_logic.py", line 184, in train_gmm_per_year
+    mapping = align_clusters(
+        prev_centers,
+    ...<3 lines>...
+        metric=config.GMM_ALIGN_METRIC,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\model.py", line 423, in align_clusters
+    cost_matrix[i, j] = bhattacharyya_distance(
+                        ~~~~~~~~~~~~~~~~~~~~~~^
+        curr_centers[i],
+        ^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        _cov_mat(prev_covs[j]),
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\model.py", line 456, in bhattacharyya_distance
+    term1 = 0.125 * float(dm.T @ inv_S @ dm)
+                    ~~~~~^^^^^^^^^^^^^^^^^^^
+TypeError: only 0-dimensional arrays can be converted to Python scalars
+2025-12-31 15:21:52 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 15:21:52 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 15:21:54 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 15:21:54 - StockClustering - INFO - main:101 - Start KMeans clustering
+2025-12-31 15:22:44 - StockClustering - INFO - main:104 - End   KMeans clustering
+2025-12-31 15:22:44 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 15:23:28 - StockClustering - ERROR - main:126 - Fatal error: name 'GMM_COVARIANCE_TYPE' is not defined
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 488, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 179, in run_gmm_pipeline
+    labels_map, probs_map, _quality_map, last_model, sort_feature = train_gmm_per_year(
+                                                                    ~~~~~~~~~~~~~~~~~~^
+        X_feats, years, df_clean.index, feature_cols_used, final_k
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\pipeline_logic.py", line 170, in train_gmm_per_year
+    covariance_type=GMM_COVARIANCE_TYPE,
+                    ^^^^^^^^^^^^^^^^^^^
+NameError: name 'GMM_COVARIANCE_TYPE' is not defined
+2025-12-31 15:25:54 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 15:25:54 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 15:25:56 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 15:25:56 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 15:26:44 - StockClustering - ERROR - main:126 - Fatal error: name 'GMM_N_INIT' is not defined
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 488, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 179, in run_gmm_pipeline
+    labels_map, probs_map, _quality_map, last_model, sort_feature = train_gmm_per_year(
+                                                                    ~~~~~~~~~~~~~~~~~~^
+        X_feats, years, df_clean.index, feature_cols_used, final_k
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\pipeline_logic.py", line 173, in train_gmm_per_year
+    n_init=GMM_N_INIT,
+           ^^^^^^^^^^
+NameError: name 'GMM_N_INIT' is not defined
+2025-12-31 15:30:02 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 15:30:02 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 15:30:04 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 15:30:04 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 15:30:48 - StockClustering - ERROR - main:126 - Fatal error: only 0-dimensional arrays can be converted to Python scalars
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 488, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 179, in run_gmm_pipeline
+    labels_map, probs_map, _quality_map, last_model, sort_feature = train_gmm_per_year(
+                                                                    ~~~~~~~~~~~~~~~~~~^
+        X_feats, years, df_clean.index, feature_cols_used, final_k
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\pipeline_logic.py", line 197, in train_gmm_per_year
+    mapping = align_clusters(
+        prev_centers,
+    ...<3 lines>...
+        metric=GMM_ALIGN_METRIC,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\model.py", line 423, in align_clusters
+    cost_matrix[i, j] = bhattacharyya_distance(
+                        ~~~~~~~~~~~~~~~~~~~~~~^
+        curr_centers[i],
+        ^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        _cov_mat(prev_covs[j]),
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\ai-quant\Project_1\youngsig\src\gmm\model.py", line 456, in bhattacharyya_distance
+    term1 = 0.125 * float(dm.T @ inv_S @ dm)
+                    ~~~~~^^^^^^^^^^^^^^^^^^^
+TypeError: only 0-dimensional arrays can be converted to Python scalars
