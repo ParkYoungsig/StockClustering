@@ -1,6 +1,9 @@
+import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 
 import FinanceDataReader as fdr
 import numpy as np
@@ -11,21 +14,16 @@ from tqdm.auto import tqdm as tqdm_auto
 tqdm_auto.pandas()
 warnings.filterwarnings("ignore")
 
-# # Module-level constants
-# SCRIPT_DIR = Path(__file__).parent.resolve()
-# DATA_DIR = SCRIPT_DIR / "data"
-# STOCK_LIST_FILE = SCRIPT_DIR / "stock_list.csv"
-# FINANCIALS_FILE = SCRIPT_DIR / "financials.xlsx"
-# DELIST_REPORT_FILE = SCRIPT_DIR / "stock_delist.md"
 
 # ------------------------------------------------------------------
 # 설정파일(/src/config.py)에서 List 파일과 데이터 파일 위치 가져오기
-#------------------------------------------------------------------- 
-from config  import LIST_FILE_LOCATION, DATA_FILE_LOCATION
+# -------------------------------------------------------------------
+from config import DATA_FILE_LOCATION, LIST_FILE_LOCATION
+
 DATA_DIR = Path(DATA_FILE_LOCATION).resolve()
 LIST_DIR = Path(LIST_FILE_LOCATION).resolve()
-STOCK_LIST_FILE    = LIST_DIR / "stock_list.csv"
-FINANCIALS_FILE    = LIST_DIR / "financials.xlsx"
+STOCK_LIST_FILE = LIST_DIR / "stock_list.csv"
+FINANCIALS_FILE = LIST_DIR / "financials.xlsx"
 DELIST_REPORT_FILE = LIST_DIR / "stock_delist.md"
 
 # Technical analysis constants
@@ -33,12 +31,32 @@ SQRT_252 = np.sqrt(252)
 ALPHA_14 = 1 / 14
 EPSILON = 1e-10
 
-# Analysis windows
 RETURN_WINDOWS = [1, 5, 20, 30, 50, 60, 100, 120, 200]
 DISPARITY_WINDOWS = [5, 20, 60, 120]
-
-# Delisting detection threshold (days)
 DELISTING_THRESHOLD_DAYS = 10
+
+# Adaptive worker counts based on CPU cores
+CPU_COUNT = os.cpu_count() or 2
+MAX_DOWNLOAD_WORKERS = min(8, max(1, CPU_COUNT // 2))
+MAX_EXCEL_WORKERS = min(4, max(1, CPU_COUNT // 2))
+
+
+# Utility function to clean ticker codes
+def clean_ticker(ticker_series, strip_prefix=True):
+    """
+    Clean ticker codes to 6-digit format.
+
+    Args:
+        ticker_series: pandas Series of ticker codes
+        strip_prefix: If True, removes 'a' or 'A' prefix before padding
+
+    Returns:
+        pandas Series of cleaned 6-digit ticker codes
+    """
+    ticker_str = ticker_series.astype(str)
+    if strip_prefix:
+        ticker_str = ticker_str.str.lstrip("aA")
+    return ticker_str.str.zfill(6)
 
 
 def data_download(start_date="2015-01-01", end_date="2024-12-31"):
@@ -50,76 +68,253 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
     if not STOCK_LIST_FILE.exists():
         raise FileNotFoundError(f"stock_list.csv를 찾을 수 없습니다: {STOCK_LIST_FILE}")
     if not FINANCIALS_FILE.exists():
-        raise FileNotFoundError(f"financials.xlsx를 찾을 수 없습니다: {FINANCIALS_FILE}")
+        raise FileNotFoundError(
+            f"financials.xlsx를 찾을 수 없습니다: {FINANCIALS_FILE}"
+        )
 
     ticker_df = pd.read_csv(STOCK_LIST_FILE, encoding="cp949")
-    tickers = ticker_df.iloc[:, 0].astype(str).str.zfill(6).tolist()
+    ticker_series = clean_ticker(ticker_df.iloc[:, 0], strip_prefix=False)
+    tickers = ticker_series.tolist()
 
-    ticker_to_name = dict(
-        zip(ticker_df.iloc[:, 0].astype(str).str.zfill(6), ticker_df.iloc[:, 1])
-    )
+    ticker_to_name = dict(zip(ticker_series, ticker_df.iloc[:, 1]))
 
     print(f"\n✓ {len(ticker_df)}개 종목 로드 완료")
     print(f"✓ {len(tickers)}개 티커 추출 완료")
     print(f"데이터 수집 기간: {start_date} ~ {end_date}")
     print(f"수집할 종목 수: {len(tickers)}\n")
+    print(
+        f"병렬 처리 설정: CPU {CPU_COUNT}코어 → 다운로드 {MAX_DOWNLOAD_WORKERS}개, Excel {MAX_EXCEL_WORKERS}개 워커\n"
+    )
 
-    all_stocks = []
-    failed_tickers = []
-    delisted_info = []
+    # ========== PARALLEL EXECUTION: Stock Downloads + Excel Loading ==========
+    print("=" * 80)
+    print("데이터 수집 시작")
+    print("=" * 80 + "\n")
 
-    print("데이터 수집 시작...\n")
+    def download_stocks_task():
+        """Task 1: Download stock data from API"""
 
-    for ticker in tqdm(tickers, desc="주식 데이터 다운로드 중"):
-        try:
-            stock_df = fdr.DataReader(ticker, start_date, end_date)
+        def download_single_stock(ticker):
+            try:
+                stock_df = fdr.DataReader(ticker, start_date, end_date)
 
-            if not stock_df.empty:
-                stock_df["Ticker"] = ticker
-                stock_df = stock_df.reset_index()
-                all_stocks.append(stock_df)
-            else:
-                failed_tickers.append(ticker)
+                if not stock_df.empty:
+                    stock_df["Ticker"] = ticker
+                    stock_df = stock_df.reset_index()
+                    return ("success", ticker, stock_df)
+                else:
+                    stock_name = ticker_to_name.get(ticker, "알수없음")
+                    return ("empty", ticker, stock_name)
+
+            except Exception as e:
                 stock_name = ticker_to_name.get(ticker, "알수없음")
-                delisted_info.append(
-                    {
-                        "종목코드": ticker,
-                        "종목명": stock_name,
-                        "상태": "데이터없음",
-                        "마지막거래일": "N/A",
-                        "사유": "데이터를 가져올 수 없음",
-                    }
-                )
+                return ("error", ticker, stock_name, str(e)[:100])
 
-        except Exception as e:
-            failed_tickers.append(ticker)
-            stock_name = ticker_to_name.get(ticker, "알수없음")
-            delisted_info.append(
-                {
-                    "종목코드": ticker,
-                    "종목명": stock_name,
-                    "상태": "오류발생",
-                    "마지막거래일": "N/A",
-                    "사유": str(e)[:100],
-                }
-            )
-            print(f"\n{ticker} 다운로드 오류: {str(e)[:100]}")
+        all_stocks = []
+        failed_tickers = []
+        delisted_info = []
+        list_lock = Lock()
 
-    print(f"\n✓ 성공적으로 다운로드: {len(all_stocks)}개 종목")
-    if failed_tickers:
-        print(f"✗ 실패: {len(failed_tickers)}개 종목")
+        with ThreadPoolExecutor(max_workers=MAX_DOWNLOAD_WORKERS) as executor:
+            future_to_ticker = {
+                executor.submit(download_single_stock, ticker): ticker
+                for ticker in tickers
+            }
 
+            for future in tqdm(
+                as_completed(future_to_ticker),
+                total=len(tickers),
+                desc="Stock Download",
+                ncols=80,
+                position=0,
+                leave=True,
+            ):
+                result = future.result()
+
+                with list_lock:
+                    if result[0] == "success":
+                        _, ticker, stock_df = result
+                        all_stocks.append(stock_df)
+
+                    elif result[0] == "empty":
+                        _, ticker, stock_name = result
+                        failed_tickers.append(ticker)
+                        delisted_info.append(
+                            {
+                                "종목코드": ticker,
+                                "종목명": stock_name,
+                                "상태": "데이터없음",
+                                "마지막거래일": "N/A",
+                                "사유": "데이터를 가져올 수 없음",
+                            }
+                        )
+
+                    else:
+                        _, ticker, stock_name, error_msg = result
+                        failed_tickers.append(ticker)
+                        delisted_info.append(
+                            {
+                                "종목코드": ticker,
+                                "종목명": stock_name,
+                                "상태": "오류발생",
+                                "마지막거래일": "N/A",
+                                "사유": error_msg,
+                            }
+                        )
+
+        print(
+            f"\n주식 다운로드 완료: {len(all_stocks)}개 성공, {len(failed_tickers)}개 실패\n"
+        )
+
+        return all_stocks, failed_tickers, delisted_info
+
+    def load_excel_task():
+        """Task 2: Load financial data from Excel"""
+
+        # Pre-compute ticker set once (shared by all functions)
+        tickers_set = set(tickers)
+
+        def load_financial_sheet_filtered(sheet_name):
+            # Create a new ExcelFile instance for each thread (calamine is not thread-safe)
+            try:
+                excel_file_obj = pd.ExcelFile(FINANCIALS_FILE, engine="calamine")
+            except ImportError:
+                excel_file_obj = pd.ExcelFile(FINANCIALS_FILE, engine="openpyxl")
+
+            # Single-pass: Load sheet and filter columns after
+            df_raw = excel_file_obj.parse(sheet_name, header=None)
+
+            all_tickers_clean = clean_ticker(df_raw.iloc[0, 1:], strip_prefix=True)
+            dates = pd.to_datetime(df_raw.iloc[3:, 0])
+
+            mask = all_tickers_clean.isin(tickers_set)
+            cols_to_keep = [i + 1 for i, keep in enumerate(mask) if keep]
+            tickers_kept = all_tickers_clean[mask].tolist()
+
+            values = df_raw.iloc[3:, cols_to_keep]
+
+            df = pd.DataFrame(values.values, index=dates, columns=tickers_kept)
+            df = df.apply(pd.to_numeric, errors="coerce")
+            df = df.sort_index()
+
+            return sheet_name, df
+
+        def process_metric_rows(filtered_rows, dates):
+            """Helper to process metric rows into DataFrame with dates as index"""
+            if filtered_rows.empty:
+                return pd.DataFrame(index=dates)
+
+            metric_data = filtered_rows.set_index("ticker_clean").iloc[:, 3:-2].T
+
+            # Handle length mismatch between dates and transposed data
+            # This can happen if the Excel file has trailing columns
+            min_len = min(len(metric_data), len(dates))
+            metric_data = metric_data.iloc[:min_len]
+            metric_data.index = dates[:min_len]
+
+            return metric_data.apply(pd.to_numeric, errors="coerce").sort_index()
+
+        def load_raw_sheet_metrics():
+            # Create a new ExcelFile instance for each thread (calamine is not thread-safe)
+            try:
+                excel_file_obj = pd.ExcelFile(FINANCIALS_FILE, engine="calamine")
+            except ImportError:
+                excel_file_obj = pd.ExcelFile(FINANCIALS_FILE, engine="openpyxl")
+
+            df_raw = excel_file_obj.parse("RAW", header=None)
+
+            # Clean ticker column using modular function
+            ticker_col = clean_ticker(df_raw.iloc[:, 0], strip_prefix=True)
+            metric_col = df_raw.iloc[:, 2].astype(str)
+
+            # Calculate dates once
+            dates = pd.to_datetime(df_raw.iloc[0, 3:])
+
+            # Filter rows early to reduce memory
+            ticker_mask = ticker_col.isin(tickers_set)
+            df_filtered = df_raw[ticker_mask].copy()
+
+            if df_filtered.empty:
+                return pd.DataFrame(index=dates), pd.DataFrame(index=dates)
+
+            df_filtered["ticker_clean"] = ticker_col[ticker_mask]
+            df_filtered["metric"] = metric_col[ticker_mask]
+
+            # Use modular function to process both metrics
+            mask_revenue = df_filtered["metric"].str.contains("매출액", na=False)
+            mask_op_profit = df_filtered["metric"].str.contains("영업이익", na=False)
+
+            df_revenue = process_metric_rows(df_filtered[mask_revenue], dates)
+            df_op_profit = process_metric_rows(df_filtered[mask_op_profit], dates)
+
+            return df_revenue, df_op_profit
+
+        financial_sheets = ["BPS", "DPS", "EPS", "배당수익률"]
+        sheet_results = {}
+        total_tasks = len(financial_sheets) + 1  # +1 for RAW_METRICS
+
+        with ThreadPoolExecutor(max_workers=MAX_EXCEL_WORKERS) as executor:
+            futures = {
+                executor.submit(load_financial_sheet_filtered, sheet): sheet
+                for sheet in financial_sheets
+            }
+            futures[executor.submit(load_raw_sheet_metrics)] = "RAW_METRICS"
+
+            with tqdm(
+                total=total_tasks,
+                desc="Financial Data",
+                ncols=80,
+                position=1,
+                leave=True,
+            ) as pbar:
+                for future in as_completed(futures):
+                    task_name = futures[future]
+                    if task_name == "RAW_METRICS":
+                        df_revenue, df_op_profit = future.result()
+                    else:
+                        sheet_name, df = future.result()
+                        sheet_results[sheet_name] = df
+                    pbar.update(1)
+
+        df_bps = sheet_results["BPS"]
+        df_dps = sheet_results["DPS"]
+        df_eps = sheet_results["EPS"]
+        df_div_yield = sheet_results["배당수익률"]
+
+        print("\n재무 데이터 로드 완료")
+        print(
+            f"  BPS/DPS/EPS/배당수익률: {df_bps.shape[0]} dates x {df_bps.shape[1]} tickers"
+        )
+        print(
+            f"  매출액/영업이익: {df_revenue.shape[0]} dates x {df_revenue.shape[1]} tickers\n"
+        )
+
+        return df_bps, df_dps, df_eps, df_div_yield, df_revenue, df_op_profit
+
+    # Run both tasks in parallel
+    with ThreadPoolExecutor(max_workers=2) as main_executor:
+        stock_future = main_executor.submit(download_stocks_task)
+        excel_future = main_executor.submit(load_excel_task)
+
+        all_stocks, failed_tickers, delisted_info = stock_future.result()
+        df_bps, df_dps, df_eps, df_div_yield, df_revenue, df_op_profit = (
+            excel_future.result()
+        )
+
+    print("=" * 80)
+    print("데이터 수집 완료!")
+    print("=" * 80 + "\n")
+
+    # ========== Process stock data ==========
     if not all_stocks:
         raise ValueError("수집된 데이터가 없습니다!")
 
-    df_all = pd.concat(all_stocks, ignore_index=True)
+    df_all = pd.concat(all_stocks, ignore_index=True, copy=False)
     df_all = df_all.sort_values(["Ticker", "Date"]).reset_index(drop=True)
 
     print(f"결합된 DataFrame 크기: {df_all.shape}")
     print(f"날짜 범위: {df_all['Date'].min()} ~ {df_all['Date'].max()}")
     print(f"고유 종목 수: {df_all['Ticker'].nunique()}\n")
-
-    print("종목명 추가 및 카테고리 타입 변환 중...\n")
 
     df_all["종목명"] = df_all["Ticker"].map(ticker_to_name).astype("category")
 
@@ -128,10 +323,7 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
     cols.insert(1, "종목명")
     df_all = df_all[cols]
 
-    print("✓ 종목명을 카테고리 타입으로 추가")
     print(f"DataFrame 크기: {df_all.shape}\n")
-
-    print("모든 기술적 특성 계산 중 (수익률, 거래량, 지표, 이격도, 리스크)...\n")
 
     def calculate_all_features(group):
         for window in RETURN_WINDOWS:
@@ -257,107 +449,12 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
             calculate_all_features
         )
 
-    print("\n✓ 하나의 groupby 패스로 모든 기술적 특성 추가 완료!")
-    print("  - 수익률: 9개 컬럼")
-    print("  - 거래량: 7개 컬럼")
-    print("  - 지표: 6개 컬럼 (RSI, MFI, ATR, NATR, ADX)")
-    print("  - 이격도: 4개 컬럼")
-    print("  - 리스크: 9개 컬럼")
     print(f"\nDataFrame 크기: {df_all.shape}")
     print(f"총 컬럼 수: {len(df_all.columns)}\n")
 
-    print("재무제표 데이터를 Excel에서 로드 중...\n")
+    # ========== Financial data already loaded in parallel above ==========
 
-    excel_file_obj = pd.ExcelFile(FINANCIALS_FILE)
-
-    def load_financial_sheet_filtered(excel_obj, sheet_name, tickers_to_keep):
-        df_raw = excel_obj.parse(sheet_name, header=None)
-
-        all_tickers = df_raw.iloc[0, 1:].astype(str).tolist()
-        company_names = df_raw.iloc[1, 1:].astype(str).tolist()
-        dates = pd.to_datetime(df_raw.iloc[3:, 0])
-
-        all_tickers_clean = [str(col).lstrip("aA").zfill(6) for col in all_tickers]
-
-        tickers_set = set(tickers_to_keep)
-        cols_to_keep = [
-            i + 1 for i, t in enumerate(all_tickers_clean) if t in tickers_set
-        ]
-        tickers_kept = [all_tickers_clean[i - 1] for i in cols_to_keep]
-
-        values = df_raw.iloc[3:, cols_to_keep]
-
-        df = pd.DataFrame(values.values, index=dates, columns=tickers_kept)
-        df = df.apply(pd.to_numeric, errors="coerce")
-        df = df.sort_index()
-
-        sheet_ticker_to_name = {
-            tickers_kept[i]: company_names[cols_to_keep[i] - 1]
-            for i in range(len(tickers_kept))
-        }
-
-        return df, sheet_ticker_to_name
-
-    def load_raw_sheet_metric_filtered(excel_obj, metric_name, tickers_to_keep):
-        df_raw = excel_obj.parse("RAW", header=None)
-        dates = pd.to_datetime(df_raw.iloc[0, 3:])
-        metric_rows = df_raw[
-            df_raw.iloc[:, 2].astype(str).str.contains(metric_name, na=False)
-        ]
-
-        tickers_set = set(tickers_to_keep)
-        ticker_data = {}
-
-        for idx, row in metric_rows.iterrows():
-            ticker = str(row.iloc[0]).lstrip("aA").zfill(6)
-            if ticker in tickers_set:
-                values = row.iloc[3:].values
-                ticker_series = pd.Series(values, index=dates)
-                ticker_data[ticker] = ticker_series
-
-        df_metric = pd.DataFrame(ticker_data)
-        df_metric = df_metric.apply(pd.to_numeric, errors="coerce")
-        df_metric = df_metric.sort_index()
-
-        return df_metric
-
-    print(f"Excel 파일: {FINANCIALS_FILE}")
-
-    print("BPS 시트 로드 중...")
-    df_bps, bps_names = load_financial_sheet_filtered(excel_file_obj, "BPS", tickers)
-    print(f"  ✓ BPS: {df_bps.shape[0]}개 날짜 × {df_bps.shape[1]}개 티커 (필터됨)")
-
-    print("DPS 시트 로드 중...")
-    df_dps, dps_names = load_financial_sheet_filtered(excel_file_obj, "DPS", tickers)
-    print(f"  ✓ DPS: {df_dps.shape[0]}개 날짜 × {df_dps.shape[1]}개 티커 (필터됨)")
-
-    print("EPS 시트 로드 중...")
-    df_eps, eps_names = load_financial_sheet_filtered(excel_file_obj, "EPS", tickers)
-    print(f"  ✓ EPS: {df_eps.shape[0]}개 날짜 × {df_eps.shape[1]}개 티커 (필터됨)")
-
-    print("배당수익률 시트 로드 중...")
-    df_div_yield, div_yield_names = load_financial_sheet_filtered(
-        excel_file_obj, "배당수익률", tickers
-    )
-    print(
-        f"  ✓ 배당수익률: {df_div_yield.shape[0]}개 날짜 × {df_div_yield.shape[1]}개 티커 (필터됨)"
-    )
-
-    print("RAW 시트에서 매출액 로드 중...")
-    df_revenue = load_raw_sheet_metric_filtered(excel_file_obj, "매출액", tickers)
-    print(
-        f"  ✓ 매출액: {df_revenue.shape[0]}개 날짜 × {df_revenue.shape[1]}개 티커 (필터됨)"
-    )
-
-    print("RAW 시트에서 영업이익 로드 중...")
-    df_op_profit = load_raw_sheet_metric_filtered(excel_file_obj, "영업이익", tickers)
-    print(
-        f"  ✓ 영업이익: {df_op_profit.shape[0]}개 날짜 × {df_op_profit.shape[1]}개 티커 (필터됨)"
-    )
-
-    print("\n✓ 재무 데이터 로드 완료\n")
-
-    print("지연 적용 중...\n")
+    print("Applying lags...\n")
 
     def apply_financial_lag(df_financial):
         df_lagged = df_financial.copy()
@@ -396,15 +493,15 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
     df_revenue_lagged = apply_quarterly_lag(df_revenue)
     df_op_profit_lagged = apply_quarterly_lag(df_op_profit)
 
-    print("✓ 지연 적용 완료:")
-    print("  - 일간 데이터 (BPS, DPS, EPS, 배당수익률): 3개월 지연")
-    print("  - 분기 데이터 (매출액, 영업이익): 다음 분기 시작부터 사용 가능")
-    print("    · Q1 (3월 31일) → 4월 1일")
-    print("    · Q2 (6월 30일) → 7월 1일")
-    print("    · Q3 (9월 30일) → 10월 1일")
-    print("    · Q4 (12월 31일) → 1월 1일 (다음 해)\n")
+    print("✓ Lags applied:")
+    print("  - Daily data (BPS, DPS, EPS, dividend yield): 3 months lag")
+    print("  - Quarterly data (revenue, operating profit): next quarter start")
+    print("    · Q1 (Mar 31) → Apr 1")
+    print("    · Q2 (Jun 30) → Jul 1")
+    print("    · Q3 (Sep 30) → Oct 1")
+    print("    · Q4 (Dec 31) → Jan 1 (next year)\n")
 
-    print("재무 데이터 병합 및 파생 지표 계산 중...\n")
+    print("Merging financial data and calculating derived metrics...\n")
 
     def merge_financial_data(group):
         ticker = group.name
@@ -471,34 +568,39 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
             merge_financial_data
         )
     except AttributeError:
-        df_all = df_all.groupby("Ticker", group_keys=False).apply(
-            merge_financial_data
-        )
+        df_all = df_all.groupby("Ticker", group_keys=False).apply(merge_financial_data)
 
-    print("✓ 재무제표 컬럼 추가:")
-    print("  - BPS, DPS, EPS, 배당수익률, 매출액, 영업이익")
-    print("\n✓ 파생 지표 계산:")
-    print("  - PER, PBR, ROE, 배당성향")
-    print("  - ROE_YoY, EPS_YoY, 영업이익_YoY, 매출액_YoY")
     print(f"\n최종 DataFrame 크기: {df_all.shape}")
     print(f"총 컬럼 수: {len(df_all.columns)}\n")
 
+    # Rotate data directories: data -> data_old (keep only 2 versions)
     output_dir = DATA_DIR
-    base_output_dir = output_dir
-    counter = 1
-    while output_dir.exists():
-        output_dir = Path(f"{base_output_dir} ({counter})")
-        counter += 1
+    old_dir = DATA_DIR.parent / "data_old"
 
+    if output_dir.exists():
+        # If data_old exists, delete it first
+        if old_dir.exists():
+            import shutil
+
+            shutil.rmtree(old_dir)
+            print(f"Removed old backup: {old_dir}")
+
+        # Rename current data to data_old
+        output_dir.rename(old_dir)
+        print(f"Backed up current data: {output_dir} -> {old_dir}")
+
+    # Create fresh data directory
     output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Created new data directory: {output_dir}\n")
 
     all_tickers = df_all.index.get_level_values("Ticker").unique()
 
     print(f"개별 종목 파일 저장 중: {output_dir}\n")
 
     stock_metadata = {}
+    col_count = 0
 
-    for ticker in tqdm(all_tickers, desc="parquet 파일 저장 중"):
+    for ticker in tqdm(all_tickers, desc="Saving Files", ncols=80):
         stock_df = df_all.xs(ticker, level="Ticker").copy()
 
         cols_to_drop = ["Ticker", "index", "level_0"]
@@ -507,6 +609,9 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
         )
 
         stock_df = stock_df.sort_index()
+
+        if col_count == 0:
+            col_count = stock_df.shape[1]
 
         stock_metadata[ticker] = {
             "last_date": stock_df.index.max(),
@@ -518,17 +623,20 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
         filename = f"{ticker}_{stock_name}.parquet"
         filepath = output_dir / filename
 
-        stock_df.to_parquet(filepath, compression="snappy", index=True)
+        stock_df.to_parquet(
+            filepath, engine="pyarrow", compression="snappy", index=True
+        )
 
     unique_ticker_count = len(all_tickers)
-    col_count = stock_df.shape[1] if not all_tickers.empty else 0
 
     print("\n상장폐지 종목 검사 중...\n")
 
     end_date_dt = pd.to_datetime(end_date)
     delisting_threshold = end_date_dt - pd.Timedelta(days=DELISTING_THRESHOLD_DAYS)
 
-    for ticker, metadata in tqdm(stock_metadata.items(), desc="상장폐지 검사 중"):
+    for ticker, metadata in tqdm(
+        stock_metadata.items(), desc="Delisting Check", ncols=80
+    ):
         last_date = metadata["last_date"]
         last_close = metadata["last_close"]
 
@@ -563,22 +671,6 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
     print(f"✓ {unique_ticker_count}개 파일 저장 완료")
     print(f"✓ 출력 디렉토리: {output_dir}")
     print(f"✓ 파일당 컬럼 수: {col_count}개")
-    print("\n특성 분류:")
-    print("  - OHLCV: 7개 (종목명, Open, High, Low, Close, Volume, Change)")
-    print("  - 수익률: 9개 (1d, 5d, 20d, 30d, 50d, 60d, 100d, 120d, 200d)")
-    print(
-        "  - 거래량: 7개 (vol_20, vol_60, vol_60_sqrt252, log_vol, vol_ratio_60, avg_log_vol_ratio_60, std_log_vol_ratio_60)"
-    )
-    print("  - 기술지표: 6개 (RSI_14, RSI_14_60avg, MFI_14, ATR_14, NATR_14, ADX_14)")
-    print("  - 이격도: 4개 (5d, 20d, 60d, 120d)")
-    print(
-        "  - 리스크: 9개 (Mean_60d, Median_60d, Std_60d, Sharpe_60d, Sharpe_252d, Sortino_60d, Sortino_252d, Skewness_60d, Zscore_60d)"
-    )
-    print("  - 재무제표: 6개 (BPS, DPS, EPS, 배당수익률, 매출액, 영업이익)")
-    print(
-        "  - 파생지표: 8개 (PER, PBR, ROE, 배당성향, ROE_YoY, EPS_YoY, 영업이익_YoY, 매출액_YoY)"
-    )
-    print(f"  - 총합: {col_count}개 컬럼")
     print(f"{'=' * 80}\n")
 
     if delisted_info:
@@ -630,67 +722,83 @@ def data_download(start_date="2015-01-01", end_date="2024-12-31"):
 
 
 def data_load():
-    # print(f"📍 스크립트 위치: {SCRIPT_DIR}")
-    print(f"📂 데이터 폴더 탐색 중: {DATA_DIR.absolute()}")
+    print(f"데이터 디렉토리: {DATA_DIR}")
+    print("데이터 폴더 확인 중...\n")
 
+    # Simply use DATA_DIR without any search logic
     if not DATA_DIR.exists():
-        print(
-            f"\n❌ 오류: '{DATA_DIR.absolute()}' 위치에서 'data' 폴더를 찾을 수 없습니다."
-        )
-        print(
-            "💡 collect_create_data.py 파일과 같은 위치에 'data' 폴더를 만들고 .parquet 파일들을 넣어주세요."
-        )
+        print(f"\n오류: 데이터 폴더를 찾을 수 없습니다: {DATA_DIR.absolute()}")
+        print("data_download()를 실행하여 데이터를 먼저 수집하세요.")
         return None
 
     parquet_files = list(DATA_DIR.glob("*.parquet"))
 
     if not parquet_files:
-        print("\n❌ 오류: 'data' 폴더는 존재하지만, 내부에 .parquet 파일이 없습니다!")
+        print(f"\n오류: '{DATA_DIR.name}' 폴더는 존재하지만 parquet 파일이 없습니다!")
         return None
 
-    print(f"\n✅ 데이터 폴더 발견: {DATA_DIR.absolute()}")
-    print(f"✅ {len(parquet_files)}개의 parquet 파일을 찾았습니다.")
+    print(f"\n데이터 폴더: {DATA_DIR.absolute()}")
+    print(f"{len(parquet_files)}개 parquet 파일 발견")
+
+    num_files = len(parquet_files)
+    max_parquet_workers = min(CPU_COUNT, 16, num_files)
+    print(f"병렬 로딩: {max_parquet_workers}개 워커\n")
+
+    def load_single_parquet(file_path):
+        """Load a single parquet file and add ticker"""
+        try:
+            stock_df = pd.read_parquet(file_path, engine="pyarrow")
+
+            # Extract ticker from filename (format: TICKER_NAME.parquet)
+            ticker_code = file_path.stem.split("_")[0]
+            stock_df["Ticker"] = ticker_code
+
+            return ("success", stock_df, None)
+        except Exception as e:
+            return ("error", None, (file_path.name, str(e)))
 
     all_stocks = []
     failed_files = []
 
-    for file_path in tqdm(parquet_files, desc="parquet 파일 로드 중"):
-        try:
-            stock_df = pd.read_parquet(file_path)
+    # Parallel loading with ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max_parquet_workers) as executor:
+        futures = {executor.submit(load_single_parquet, fp): fp for fp in parquet_files}
 
-            ticker_code = file_path.stem.split("_")[0]
-            stock_df["Ticker"] = ticker_code
+        for future in tqdm(
+            as_completed(futures),
+            total=len(parquet_files),
+            desc="Loading Parquet Files",
+            ncols=80,
+        ):
+            status, stock_df, error_info = future.result()
 
-            all_stocks.append(stock_df)
-        except Exception as e:
-            failed_files.append((file_path.name, str(e)))
+            if status == "success":
+                all_stocks.append(stock_df)
+            else:
+                failed_files.append(error_info)
 
     if not all_stocks:
-        print("\n❌ 읽을 수 있는 parquet 파일이 없습니다!")
+        print("\n오류: 읽을 수 있는 parquet 파일이 없습니다!")
         return None
 
+    print(f"\n병합 중 ({len(all_stocks)}개 파일)...")
     df_all = pd.concat(all_stocks, ignore_index=False)
     df_all.index = pd.to_datetime(df_all.index)
     df_all.index.name = "Date"
     df_all = df_all.set_index("Ticker", append=True)
     df_all = df_all.sort_index()
 
-    print(f"\n✓ 멀티인덱스 DataFrame 생성 완료 (총 {len(df_all):,}행 로드)")
+    print(f"DataFrame 로드 완료: {len(df_all):,}행")
 
     if failed_files:
-        print(f"\n⚠️  읽지 못한 파일: {len(failed_files)}개")
-        for filename, error in failed_files[:5]:
-            print(f"  - {filename}: {error[:50]}")
-        if len(failed_files) > 5:
-            print(f"  ... 외 {len(failed_files) - 5}개 더")
+        print(f"\n경고: 읽지 못한 파일 {len(failed_files)}개")
+        for filename, error in failed_files[:3]:
+            print(f"  {filename}: {error[:50]}")
+        if len(failed_files) > 3:
+            print(f"  ... 외 {len(failed_files) - 3}개")
 
     print(f"\n{'=' * 80}")
-    print(f"인덱스: {df_all.index.names}")
-    print(f"컬럼 수: {len(df_all.columns)}개")
-    print(f"{'=' * 80}")
-    print("\n컬럼 목록:")
-    for i, col in enumerate(df_all.columns, 1):
-        print(f"{i}. {col}")
+    print(f"Index: {df_all.index.names} | Columns: {len(df_all.columns)}")
     print(f"{'=' * 80}\n")
 
     return df_all
@@ -779,19 +887,3 @@ def data_query(df):
     print(df_final.tail(10))
 
     return df_final
-
-
-if __name__ == "__main__":
-    print("=" * 80)
-    print("주식 데이터 수집 및 처리 시스템")
-    print("=" * 80)
-    print("\n사용 가능한 함수:")
-    print("1. data_download(start_date='2015-01-01', end_date='2024-12-31')")
-    print("   - stock_list.csv에서 종목을 읽고 데이터를 수집하여 data 폴더에 저장")
-    print("\n2. df = data_load()")
-    print("   - data 폴더의 parquet 파일들을 로드하여 멀티인덱스 DataFrame 생성")
-    print("\n3. result = data_query(df)")
-    print("   - 날짜, 티커, 컬럼으로 데이터 필터링")
-    print("=" * 80 + "\n")
-
-#
