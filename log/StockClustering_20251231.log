@@ -1,0 +1,78 @@
+2025-12-31 09:39:14 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 09:39:14 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 09:39:17 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 09:39:17 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 09:39:34 - StockClustering - ERROR - main:124 - Fatal error: 'Year'
+Traceback (most recent call last):
+  File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\indexes\base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'Year'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 333, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 134, in run_gmm_pipeline
+    years = df_clean["Year"].to_numpy()
+            ~~~~~~~~^^^^^^^^
+  File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\frame.py", line 4113, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\indexes\base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: 'Year'
+2025-12-31 09:39:49 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 09:39:49 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 09:39:51 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 09:39:51 - StockClustering - INFO - main:101 - Start KMeans clustering
+2025-12-31 09:40:49 - StockClustering - INFO - main:104 - End   KMeans clustering
+2025-12-31 09:42:22 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 09:42:22 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 09:42:24 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 09:42:24 - StockClustering - INFO - main:111 - Start HDBScan clustering
+2025-12-31 09:42:25 - StockClustering - INFO - main:114 - End   HDBScan clustering
+2025-12-31 09:49:04 - StockClustering - INFO - main:72 - Args Data Collect : False
+2025-12-31 09:49:04 - StockClustering - INFO - main:92 - Start loading data from collected already
+2025-12-31 09:49:06 - StockClustering - INFO - main:99 - End   loading data
+2025-12-31 09:49:06 - StockClustering - INFO - main:106 - Start GMM clustering
+2025-12-31 09:49:24 - StockClustering - ERROR - main:124 - Fatal error: 'Year'
+Traceback (most recent call last):
+  File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\indexes\base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'Year'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ai-quant\Project_1\youngsig\src\main.py", line 108, in main
+    gmm_report = gmm.run()
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 333, in run
+    return run_gmm_pipeline(
+        df=self.df,
+    ...<2 lines>...
+        manual_k=manual_k,
+    )
+  File "D:\ai-quant\Project_1\youngsig\src\gmm_clustering.py", line 134, in run_gmm_pipeline
+    years = df_clean["Year"].to_numpy()
+            ~~~~~~~~^^^^^^^^
+  File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\frame.py", line 4113, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\indexes\base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: 'Year'
