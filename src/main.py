@@ -8,7 +8,7 @@ import collect_create_data
 
 # 군집화 알고리즘별 모듈
 from gmm_clustering import *
-from dbscan_clustering import *
+from hdb_clustering import *
 from kmm_clustering import *
 
 # dependencies
@@ -98,10 +98,10 @@ def main():
 
             logger.info("End   loading data")
 
-            # logger.info("Start KMeans clustering")
-            # cfg = init_kmeans_clustering()
-            # kmm_report = run_kmeans_clustering(cfg)
-            # logger.info("End   KMeans clustering")
+            logger.info("Start KMeans clustering")
+            cfg = init_kmeans_clustering()
+            kmm_report = run_kmeans_clustering(cfg)
+            logger.info("End   KMeans clustering")
 
             logger.info("Start GMM clustering")
             gmm = GMM(df)
@@ -109,12 +109,14 @@ def main():
             logger.info("End   GMM clustering")
 
             # logger.info("Start HDBScan clustering")
-            # df = init_hdb_clustering()
-            # run_hdb_clustering(df)
+            proc = DataProcessor()
+            auto_dbscan = AutoDBSCAN()
             # logger.info("End   HDBScan clustering")
 
-            # logger.info("Gather and Summurize report")
-            # # reportAll(kms_report, gmm_report, hdb_report)
+            logger.info("Start generating report ")
+            # reportAll(kms_report, gmm_report, hdb_report)
+            report_AutoDBScan()
+            logger.info("End generating report ")
 
         except KeyboardInterrupt:
             logger.info("Analysis interrupted")

@@ -4,6 +4,7 @@ output/
 data/
 *.parquet
 *.csv
+
 # 2. 결과물 및 로그 금지 (내 컴퓨터에서만 확인)
 gmm_results/
 output/

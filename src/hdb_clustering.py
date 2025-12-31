@@ -302,10 +302,7 @@ class Visualizer:
         print(cluster_info[["Label", "Count"]].to_string(index=False))
         plt.show()
 
-
-if __name__ == "__main__":
-    proc = DataProcessor()
-    auto_dbscan = AutoDBSCAN()
+def report_AutoDBScan() :
     viz = Visualizer()
 
     print("=" * 60)
@@ -333,3 +330,8 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[오류] {e}")
             traceback.print_exc()
+
+if __name__ == "__main__":
+    proc = DataProcessor()
+    auto_dbscan = AutoDBSCAN()
+    report_AutoDBScan()
