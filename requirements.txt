@@ -18,3 +18,4 @@ yfinance
 mplfinance
 adjustText
 openpyxl
+calamine>=0.6.0
