@@ -131,14 +131,17 @@ feature_cols: List[str] = [
 """
 
 # 프로젝트 루트 경로(현재 파일: <root>/src/config.py)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# 박영식 : 수정 run.bat 실행위치를 PROJECT_ROOT로 설정
+# PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(".").resolve()
 
 # ==========================================
 # [프로젝트 경로 설정]
 # 프로젝트 루트 기준 상대 경로
 # ==========================================
 DEFAULT_RESULTS_DIR_NAME = str(PROJECT_ROOT / "output")  # 결과 저장 디렉토리
-DEFAULT_DATA_DIR_NAME = str(PROJECT_ROOT / "data")  # 데이터 소스 디렉토리
+# 박영식 : 데이터 파일 위치를 PROJECT_ROOT와 동일 레벨의 "data" 폴더로 설정
+DEFAULT_DATA_DIR_NAME = str(PROJECT_ROOT / ".." / "data")  # 데이터 소스 디렉토리
 
 # ==========================================
 # [파이프라인 하이퍼파라미터 설정]
