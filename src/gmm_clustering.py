@@ -11,13 +11,30 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from config import DEFAULT_RESULTS_DIR_NAME,DEFAULT_DATA_DIR_NAME
-from config import SNAPSHOT_FREQ,START_YEAR,END_YEAR,FALLBACK_DAYS,K_RANGE
-from config import GMM_COVARIANCE_TYPE,GMM_N_INIT,GMM_MAX_ITER,GMM_REG_COVAR,GMM_ALIGN_METRIC
-from config import MIN_CLUSTER_FRAC,CORR_THRESHOLD, MAX_MISSING_RATIO
-from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST,CLUSTER_NAMES, CLUSTER_INTERPRETATIONS, CLUSTER_COLORS
+from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
+from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, FALLBACK_DAYS, K_RANGE
+from config import (
+    GMM_COVARIANCE_TYPE,
+    GMM_N_INIT,
+    GMM_MAX_ITER,
+    GMM_REG_COVAR,
+    GMM_ALIGN_METRIC,
+)
+from config import MIN_CLUSTER_FRAC, CORR_THRESHOLD, MAX_MISSING_RATIO
+from config import (
+    UMAP_N_NEIGHBORS,
+    UMAP_MIN_DIST,
+    CLUSTER_NAMES,
+    CLUSTER_INTERPRETATIONS,
+    CLUSTER_COLORS,
+)
 
-from gmm.data_loader import FEATURE_COLUMNS, convert_df_to_snapshots
+from gmm.data_loader import (
+    FEATURE_COLUMNS,
+    convert_df_to_snapshots,
+    ensure_date_ticker,
+    load_snapshots,
+)
 from gmm.pipeline_logic import select_best_k, train_gmm_per_year
 from gmm.processer import (
     compute_cluster_stats,
@@ -43,6 +60,10 @@ from gmm.visualizer import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# 모든 출력 파일 이름 앞에 붙일 접두사
+FILE_PREFIX = "gmm_"
 
 
 def compute_umap_embedding(
@@ -77,10 +98,10 @@ def save_artifacts(
 ) -> None:
     """전처리 스케일러, 메타데이터, 모델 등을 아티팩트로 저장."""
 
-    artifacts_dir = results_dir / "artifacts"
+    artifacts_dir = results_dir / f"{FILE_PREFIX}artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    joblib.dump(scaler, artifacts_dir / "scaler.pkl")
+    joblib.dump(scaler, artifacts_dir / f"{FILE_PREFIX}scaler.pkl")
     joblib.dump(
         {
             "labels_per_year": labels_map,
@@ -88,11 +109,11 @@ def save_artifacts(
             "feature_columns": features,
             "cluster_means_latest": means,
         },
-        artifacts_dir / "metadata.pkl",
+        artifacts_dir / f"{FILE_PREFIX}metadata.pkl",
     )
 
     if model is not None:
-        joblib.dump(model, artifacts_dir / "gmm_latest_year.pkl")
+        joblib.dump(model, artifacts_dir / f"{FILE_PREFIX}latest_year.pkl")
 
 
 def run_gmm_pipeline(
@@ -161,9 +182,7 @@ def run_gmm_pipeline(
     )
 
     target_year, df_latest = get_latest_year_frame(df_clean, labels_map)
-    df_valid, _cluster_sizes, noise_summary = filter_noise(
-        df_latest, MIN_CLUSTER_FRAC
-    )
+    df_valid, _cluster_sizes, noise_summary = filter_noise(df_latest, MIN_CLUSTER_FRAC)
 
     means, stds, cluster_counts = compute_cluster_stats(df_valid, feature_cols_used)
 
@@ -171,14 +190,16 @@ def run_gmm_pipeline(
     members_by_year = build_cluster_members_by_year(df_clean, labels_map)
     top_tickers_map = build_cluster_top_tickers(df_valid, top_n=10)
 
-    df_valid.to_csv(results_dir / "final_clustered_data.csv", index=False)
+    df_valid.to_csv(results_dir / f"{FILE_PREFIX}final_clustered_data.csv", index=False)
     if probs_map and target_year in probs_map:
-        probs_map[target_year].to_csv(results_dir / "final_probabilities_latest.csv")
+        probs_map[target_year].to_csv(
+            results_dir / f"{FILE_PREFIX}final_probabilities_latest.csv"
+        )
 
     pd.DataFrame(
         [(cid, name) for cid, names in members_map.items() for name in names],
         columns=["cluster", "member"],
-    ).to_csv(results_dir / "cluster_members_all_years.csv", index=False)
+    ).to_csv(results_dir / f"{FILE_PREFIX}cluster_members_all_years.csv", index=False)
 
     # 연도별 멤버 요약 추가 저장
     rows_by_year = []
@@ -188,7 +209,7 @@ def run_gmm_pipeline(
                 rows_by_year.append((year, cid, name))
     if rows_by_year:
         pd.DataFrame(rows_by_year, columns=["year", "cluster", "member"]).to_csv(
-            results_dir / "cluster_members_by_year.csv", index=False
+            results_dir / f"{FILE_PREFIX}cluster_members_by_year.csv", index=False
         )
 
     save_artifacts(
@@ -218,7 +239,7 @@ def run_gmm_pipeline(
     )
 
     write_text_report(
-        results_dir / "report.txt",
+        results_dir / f"{FILE_PREFIX}report.txt",
         load_stats or {},
         prep_stats or {},
         bic_scores or [],
@@ -243,35 +264,35 @@ def run_gmm_pipeline(
         best_k_median=best_k_median,
         label_alignment_feature=sort_feature,
         cluster_names=CLUSTER_NAMES,
-        cluster_interpretations=getattr(config, "CLUSTER_INTERPRETATIONS", None),
+        cluster_interpretations=CLUSTER_INTERPRETATIONS,
     )
 
     plot_cluster_heatmap(
-        means, results_dir / "heatmap.png", cluster_names=CLUSTER_NAMES
+        means, results_dir / f"{FILE_PREFIX}heatmap.png", cluster_names=CLUSTER_NAMES
     )
     plot_radar_chart(
         means,
-        results_dir / "radar.png",
+        results_dir / f"{FILE_PREFIX}radar.png",
         cluster_names=CLUSTER_NAMES,
         cluster_colors=CLUSTER_COLORS,
     )
     plot_parallel_coords(
         df_valid,
         feature_cols_used,
-        results_dir / "parallel.png",
+        results_dir / f"{FILE_PREFIX}parallel.png",
         cluster_names=CLUSTER_NAMES,
         cluster_colors=CLUSTER_COLORS,
     )
     plot_risk_return_scatter(
         means,
-        results_dir / "risk_return.png",
+        results_dir / f"{FILE_PREFIX}risk_return.png",
         cluster_names=CLUSTER_NAMES,
         cluster_colors=CLUSTER_COLORS,
     )
     plot_cluster_boxplots(
         df_valid,
         feature_cols_used,
-        results_dir / "cluster_boxplots.png",
+        results_dir / f"{FILE_PREFIX}cluster_boxplots.png",
         cluster_colors=CLUSTER_COLORS,
     )
 
@@ -279,7 +300,7 @@ def run_gmm_pipeline(
         plot_sankey(
             df_clean,
             labels_map,
-            results_dir / "sankey.html",
+            results_dir / f"{FILE_PREFIX}sankey.html",
             cluster_names=CLUSTER_NAMES,
             cluster_colors=CLUSTER_COLORS,
         )
@@ -294,7 +315,7 @@ def run_gmm_pipeline(
         plot_umap_scatter(
             embedding,
             labels_array,
-            results_dir / "umap.png",
+            results_dir / f"{FILE_PREFIX}umap.png",
             cluster_names=CLUSTER_NAMES,
             cluster_colors=CLUSTER_COLORS,
         )
@@ -315,19 +336,38 @@ class GMM:
         self.results_dir.mkdir(parents=True, exist_ok=True)
         self.load_stats: Dict | None = None
 
+        if df is None or df.empty:
+            # 단독 실행/외부 주입이 없을 때: 로더에서 직접 스냅샷 로드
+            self.df, self.load_stats = load_snapshots(
+                data_dir=(
+                    Path(DEFAULT_DATA_DIR_NAME)
+                    if DEFAULT_DATA_DIR_NAME
+                    else Path("data")
+                ),
+                start_year=START_YEAR,
+                end_year=END_YEAR,
+                freq=SNAPSHOT_FREQ,
+            )
+            return
+
+        # 외부(df) 주입 경로: 멀티인덱스를 컬럼으로 풀고 스냅샷 변환
+        df_norm = ensure_date_ticker(df)
+        if not {"Date", "Ticker"}.issubset(df_norm.columns):
+            raise KeyError(
+                "입력 df에 Date/Ticker가 없습니다. data_load() 결과(MultiIndex) 또는 Date/Ticker 컬럼을 포함한 DF를 넣어주세요."
+            )
+
         if df is not None and not df.empty:
             try:
                 self.df = convert_df_to_snapshots(
-                    df,
+                    df_norm,
                     freq=SNAPSHOT_FREQ,
                     start_year=START_YEAR,
                     end_year=END_YEAR,
                 )
             except Exception as e:
                 logger.warning(f"스냅샷 변환 실패, 원본 사용: {e}")
-                self.df = df
-        else:
-            self.df = df
+                self.df = df_norm
 
     def run(self, manual_k: int | None = 4) -> str:
         return run_gmm_pipeline(
@@ -336,3 +376,11 @@ class GMM:
             load_stats=self.load_stats,
             manual_k=manual_k,
         )
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+    result = GMM().run(manual_k=4)
+    print(result)
