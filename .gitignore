@@ -3,9 +3,11 @@ notebooks/
 data/
 *.parquet
 *.csv
+
 # 2. 결과물 및 로그 금지 (내 컴퓨터에서만 확인)
 gmm_results/
 logs/
+log/
 execution.log
 
 # 3. 임시 테스트 파일 금지

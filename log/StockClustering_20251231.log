@@ -76,3 +76,9 @@ Traceback (most recent call last):
   File "C:\Users\ParkYoungSig\.conda\envs\myp\Lib\site-packages\pandas\core\indexes\base.py", line 3819, in get_loc
     raise KeyError(key) from err
 KeyError: 'Year'
+2025-12-31 10:34:35 - StockClustering - INFO - main:72 - Args Data Collect : True
+2025-12-31 10:34:35 - StockClustering - INFO - main:82 - Start collecting
+2025-12-31 10:45:39 - StockClustering - INFO - main:86 - End   collecting
+2025-12-31 10:46:12 - StockClustering - INFO - main:72 - Args Data Collect : True
+2025-12-31 10:46:12 - StockClustering - INFO - main:82 - Start collecting
+2025-12-31 10:58:14 - StockClustering - INFO - main:86 - End   collecting

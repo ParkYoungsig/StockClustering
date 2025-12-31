@@ -1,0 +1,1 @@
+@REM pip freeze > Requirements.txt
