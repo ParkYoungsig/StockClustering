@@ -80,7 +80,7 @@ CHART_STYLE = {
 # ------------------------------------------#
 
 # Module-level constants
-LIST_FILE_LOCATION = "../data/list"
+LIST_FILE_LOCATION = "./list"
 DATA_FILE_LOCATION = "../data"
 
 
@@ -114,7 +114,7 @@ feature_cols: List[str] = [
 
 
 # ------------------------------------------ #
-# kmeans_clustering.py 등을 위한 config 정보   #
+# gmm_clustering.py 등을 위한 config 정보   #
 # ------------------------------------------ #
 """GMM 파이프라인 설정(상수) 모음.
 
