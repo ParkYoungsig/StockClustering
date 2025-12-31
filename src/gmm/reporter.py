@@ -420,7 +420,9 @@ def _write_report(
     # 클러스터별 피처 평균: 최신 연도 표와 10년치 평균 표를 분리 출력
     if cluster_means is not None:
         means_disp = cluster_means.copy()
-        means_disp.index = [_cluster_label(cid, cluster_names) for cid in means_disp.index]
+        means_disp.index = [
+            _cluster_label(cid, cluster_names) for cid in means_disp.index
+        ]
         f.write(f"클러스터별 피처 평균 ({year_label}):\n")
         f.write(means_disp.to_string())
         f.write("\n\n")
@@ -433,7 +435,9 @@ def _write_report(
 
     if cluster_stds is not None and not getattr(cluster_stds, "empty", True):
         stds_disp = cluster_stds.copy()
-        stds_disp.index = [_cluster_label(cid, cluster_names) for cid in stds_disp.index]
+        stds_disp.index = [
+            _cluster_label(cid, cluster_names) for cid in stds_disp.index
+        ]
         f.write("\n클러스터별 피처 표준편차 ({year_label}):\n")
         f.write(stds_disp.to_string())
         f.write("\n\n")
@@ -451,16 +455,24 @@ def _write_report(
         try:
             if hasattr(cluster_counts, "items"):
                 counts_map = {int(k): int(v) for k, v in cluster_counts.items()}
-            elif hasattr(cluster_counts, "shape") or hasattr(cluster_counts, "__iter__"):
+            elif hasattr(cluster_counts, "shape") or hasattr(
+                cluster_counts, "__iter__"
+            ):
                 # numpy array or list-like: assume index 0..N-1
-                counts_map = {int(i): int(v) for i, v in enumerate(list(cluster_counts))}
+                counts_map = {
+                    int(i): int(v) for i, v in enumerate(list(cluster_counts))
+                }
         except Exception:
             counts_map = {}
 
         latest_total = sum(counts_map.values()) if counts_map else None
 
         for cid, count in sorted(counts_map.items()):
-            pct = f"{int(round((count / latest_total) * 100))}%" if latest_total and latest_total > 0 else "(n/a)"
+            pct = (
+                f"{int(round((count / latest_total) * 100))}%"
+                if latest_total and latest_total > 0
+                else "(n/a)"
+            )
             out_line = f"  {_cluster_label(cid, cluster_names)}: {int(count)}개 ({pct})"
             # append 10-year average if available
             if cluster_counts_10y_avg is not None:
@@ -471,7 +483,11 @@ def _write_report(
                         else cluster_counts_10y_avg[int(cid)]
                     )
                     if avg10 is not None:
-                        avg_pct = f"{int(round((avg10 / latest_total) * 100))}%" if latest_total and latest_total > 0 else "(n/a)"
+                        avg_pct = (
+                            f"{int(round((avg10 / latest_total) * 100))}%"
+                            if latest_total and latest_total > 0
+                            else "(n/a)"
+                        )
                         out_line += f"  | 10yr avg: {int(round(avg10))}개 ({avg_pct})"
                 except Exception:
                     pass
