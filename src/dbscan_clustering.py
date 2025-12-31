@@ -1,261 +1,335 @@
 import os
-import io
-import sys
-import requests
-import warnings
+import glob
+import re
+import traceback
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
-import seaborn as sns
 from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
-from datetime import datetime
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from adjustText import adjust_text
 
-# ---------------------------------------------------------
-# Dependency Check: adjustText
-# ---------------------------------------------------------
-try:
-    from adjustText import adjust_text
-except ImportError:
-    import subprocess
-    subprocess.check_call(["pip", "install", "adjustText", "-q"])
-    from adjustText import adjust_text
+# 설정 파일 불러오기
+import config
 
-warnings.filterwarnings('ignore')
+plt.rcParams["font.family"] = config.FONT_FAMILY
+plt.rcParams["axes.unicode_minus"] = False
 
-class PlotConfig:
-    """시각화 스타일 및 폰트 설정 관리"""
-    
+
+class DataProcessor:
     @staticmethod
-    def set_style():
-        sns.set(style='whitegrid')
-        plt.rcParams['axes.unicode_minus'] = False
-        PlotConfig._load_web_font()
-
-    @staticmethod
-    def _load_web_font():
-        font_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
-        font_name = "NanumGothic.ttf"
-        
-        if not os.path.exists(font_name):
-            try:
-                response = requests.get(font_url)
-                response.raise_for_status()
-                with open(font_name, 'wb') as f:
-                    f.write(response.content)
-            except Exception:
-                pass
-
-        if os.path.exists(font_name):
-            fm.fontManager.addfont(font_name)
-            plt.rc('font', family='NanumGothic')
-        else:
-            plt.rc('font', family='sans-serif')
-
-class GitHubDataLoader:
-    """GitHub Raw 데이터를 이용한 주가 데이터 로더"""
-    
-    def __init__(self, repo_owner: str, repo_name: str, branch: str = 'main'):
-        self.base_url = f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}"
-
-    def load_date_data(self, date_str: str) -> pd.DataFrame:
-        filename_daily = f"{date_str}.csv"
-        df = self._fetch_csv(filename_daily)
-        
-        if df.empty:
-            print(f"[INFO] '{filename_daily}' not found. Trying master list...")
-            df = self._fetch_csv('stock_list.csv')
-
-        if df.empty:
-            return pd.DataFrame()
-
-        return self._standardize_data(df, date_str)
-
-    def _fetch_csv(self, filename: str) -> pd.DataFrame:
-        url = f"{self.base_url}/{filename}"
+    def _safe_float(val):
         try:
-            response = requests.get(url)
-            response.raise_for_status()
-            try:
-                return pd.read_csv(io.StringIO(response.text))
-            except:
-                return pd.read_csv(io.BytesIO(response.content), encoding='cp949')
-        except Exception:
-            return pd.DataFrame()
+            if isinstance(val, (pd.Series, np.ndarray, list)):
+                if len(val) == 0:
+                    return 0.0
+                return DataProcessor._safe_float(
+                    val.iloc[0] if hasattr(val, "iloc") else val[0]
+                )
 
-    def _standardize_data(self, df: pd.DataFrame, date_str: str) -> pd.DataFrame:
-        col_map = {
-            '종목코드': 'Ticker', '종목명': 'Name', 
-            '종가': 'Close', '등락률': 'Chg_Pct', 
-            '상장시가총액': 'Marcap', '거래량': 'Volume',
-            '배당수익률': 'Dividend_Yield', '주당배당금': 'DPS'
-        }
-        df.rename(columns=col_map, inplace=True)
-        
-        if 'Ticker' in df.columns:
-            df['Ticker'] = df['Ticker'].apply(lambda x: f"{int(x):06d}" if isinstance(x, (int, float)) else str(x))
+            if isinstance(val, str):
+                val = re.sub(r"[^0-9.\-]", "", val)
+                if not val:
+                    return 0.0
 
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-        else:
-            df['Date'] = pd.to_datetime(date_str)
+            v = float(val)
+            if np.isnan(v) or np.isinf(v):
+                return 0.0
+            return v
+        except:
+            return 0.0
 
-        required_cols = ['Dividend_Yield', 'DPS', '영업이익', 'Marcap']
-        for col in required_cols:
-            if col not in df.columns:
-                df[col] = 0.0
-
-        return df.set_index('Date')
-
-class FeatureEngineer:
-    """Raw 데이터를 시각화용 X, Y 좌표 및 메타데이터로 변환"""
-    
     @staticmethod
-    def create_features(snapshot: pd.DataFrame, mode: str = 'wide') -> pd.DataFrame:
-        if snapshot.empty: return pd.DataFrame()
-        
-        df = snapshot.copy()
-        if 'Ticker' in df.columns: df.set_index('Ticker', inplace=True)
-        
-        def to_num(s): 
-            return pd.to_numeric(s.astype(str).str.replace(r'[,%]', '', regex=True), errors='coerce').fillna(0)
-
-        dy = to_num(df['Dividend_Yield'])
-        dps = to_num(df['DPS'])
-        op_profit = to_num(df['영업이익'])
-        marcap = to_num(df['Marcap'])
-        
-        if dy.median() > 1.0: dy /= 100.0
-        
-        payer = (dy > 0) | (dps > 0)
-        
-        if mode == 'div_only':
-            target_idx = payer[payer].index
-            df = df.loc[target_idx]
-            dy, op_profit, marcap, payer = dy[target_idx], op_profit[target_idx], marcap[target_idx], payer[target_idx]
-
-        if df.empty: return pd.DataFrame()
-
-        qt = QuantileTransformer(n_quantiles=min(100, len(df)), output_distribution='normal', random_state=42)
-        
-        if mode == 'wide':
-            x_input = dy.copy()
-            x_input[payer] += 2.0 
-        else:
-            x_input = dy.copy()
-            
-        x_norm = qt.fit_transform(x_input.values.reshape(-1,1)).ravel()
-        x_final = MinMaxScaler().fit_transform(x_norm.reshape(-1,1)).ravel()
-        y_final = op_profit.rank(pct=True).values
-
-        names = df['Name'] if 'Name' in df.columns else pd.Series(index=df.index, data=df.index)
-
-        return pd.DataFrame({
-            'Name': names,
-            'X_Momentum': x_final,
-            'Y_Fundamental': y_final,
-            'MarketCap': marcap.values,
-            'Dividend_Yield': dy.values,
-        }, index=df.index)
-
-class RallyMapVisualizer:
-    def run(self, data: pd.DataFrame, target_date_str: str, output_folder: str = None):
+    def load_snapshot(target_date_str):
         target_date = pd.to_datetime(target_date_str)
-        
-        if isinstance(data.index, pd.DatetimeIndex):
-            snapshot = data[data.index == target_date]
-        else:
-            snapshot = data.copy()
+        data_dir = os.path.abspath(config.DATA_FOLDER)
+        files = glob.glob(os.path.join(data_dir, "*.parquet"))
 
-        if snapshot.empty:
-            print(f"[WARN] {target_date_str} No data found in loaded DataFrame.")
-            return
+        print(f"[INFO] 데이터 폴더: {data_dir}")
+        print(f"[INFO] {len(files)}개 파일 로딩 중... ({target_date_str})")
 
-        fe = FeatureEngineer()
-        feats = fe.create_features(snapshot, mode='wide')
-        
-        if feats.empty:
-            print("[WARN] Not enough features for plotting.")
-            return
+        clean_rows = []
 
-        self._plot(feats, target_date_str, output_folder)
+        for file_path in files:
+            try:
+                df = pd.read_parquet(file_path)
+                df = df.loc[:, ~df.columns.duplicated()]
 
-    def _plot(self, feats, date_str, output_folder):
-        X = feats[['X_Momentum', 'Y_Fundamental']].values
-        
-        min_samples = 3 if len(feats) > 10 else 1
-        db = DBSCAN(eps=0.1, min_samples=min_samples).fit(X)
-        feats['Cluster'] = db.labels_
-        
-        plt.figure(figsize=(12, 8))
-        plt.scatter(feats['X_Momentum'], feats['Y_Fundamental'], 
-                    s=np.log1p(feats['MarketCap'])*5 + 20, 
-                    c=feats['Cluster'], cmap='tab10', alpha=0.8, edgecolors='white')
-        
+                if "Date" in df.columns:
+                    df["Date"] = pd.to_datetime(df["Date"])
+                    df = df.set_index("Date")
+
+                if target_date not in df.index:
+                    continue
+
+                row = df.loc[target_date]
+                if isinstance(row, pd.DataFrame):
+                    row = row.iloc[-1]
+
+                filename = os.path.basename(file_path)
+                name_match = re.match(r"(\d{6})_(.+)\.parquet", filename)
+                ticker = name_match.group(1) if name_match else "Unknown"
+                name = (
+                    name_match.group(2)
+                    if name_match
+                    else filename.replace(".parquet", "")
+                )
+
+                marcap = 0.0
+                for mc in ["Marcap", "상장시가총액", "시가총액"]:
+                    if mc in row.index:
+                        marcap = DataProcessor._safe_float(row[mc])
+                        break
+
+                x_val = 0.0
+                for f in config.X_FEATS:
+                    if f in row.index:
+                        x_val = DataProcessor._safe_float(row[f])
+                        break
+
+                y_val = 0.0
+                for f in config.Y_FEATS:
+                    if f in row.index:
+                        y_val = DataProcessor._safe_float(row[f])
+                        break
+
+                clean_rows.append(
+                    {
+                        "Ticker": ticker,
+                        "Name": name,
+                        "Marcap": marcap,
+                        "X_Raw": x_val,
+                        "Y_Raw": y_val,
+                    }
+                )
+            except:
+                continue
+
+        return pd.DataFrame(clean_rows)
+
+
+class AutoDBSCAN:
+    def run(self, df):
+        # 1. NaN 제거
+        df["X_Raw"] = df["X_Raw"].fillna(0.0)
+        df["Y_Raw"] = df["Y_Raw"].fillna(0.0)
+
+        # 2. 이상치 처리 (Winsorizing: 상위 1% 값을 99% 값으로 대체)
+        # 이렇게 하면 극단값이 사라져서 그래프가 예쁘게 펴짐
+        p99_x = df["X_Raw"].quantile(0.99)
+        p99_y = df["Y_Raw"].quantile(0.99)
+        p01_y = df["Y_Raw"].quantile(0.01)
+
+        df["X_Clipped"] = df["X_Raw"].clip(upper=p99_x)
+        df["Y_Clipped"] = df["Y_Raw"].clip(lower=p01_y, upper=p99_y)
+
+        # 3. 스케일링 (RobustScaler로 중앙값 중심 정렬)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(df[["X_Clipped", "Y_Clipped"]])
+
+        # 4. DBSCAN 자동 튜닝
+        best_labels = None
+        best_eps = 0.5
+        found = False
+
+        print(
+            f"[TUNING] 목표 군집: {config.TARGET_CLUSTERS_MIN}~{config.TARGET_CLUSTERS_MAX}개 찾는 중..."
+        )
+
+        for eps in np.arange(
+            config.EPS_RANGE_START, config.EPS_RANGE_END, config.EPS_STEP
+        ):
+            db = DBSCAN(eps=eps, min_samples=config.MIN_SAMPLES).fit(X_scaled)
+            labels = db.labels_
+            n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+            if config.TARGET_CLUSTERS_MIN <= n_clusters <= config.TARGET_CLUSTERS_MAX:
+                best_labels = labels
+                best_eps = eps
+                found = True
+                print(f" -> 성공: eps={eps:.2f}, 군집={n_clusters}개")
+                break
+
+            if 2 <= n_clusters <= 10:
+                best_labels = labels
+                best_eps = eps
+
+        if not found and best_labels is None:
+            print(" -> 기본값 실행")
+            db = DBSCAN(eps=0.5, min_samples=config.MIN_SAMPLES).fit(X_scaled)
+            best_labels = db.labels_
+            best_eps = 0.5
+        elif not found:
+            print(f" -> 차선책 실행 (eps={best_eps:.2f})")
+
+        df["Cluster"] = best_labels
+
+        # 5. 라벨링
+        cluster_info = []
+        unique_labels = sorted(list(set(best_labels) - {-1}))
+
+        med_x = df["X_Clipped"].median()
+        med_y = df["Y_Clipped"].median()
+
+        for c in unique_labels:
+            group = df[df["Cluster"] == c]
+            g_med_x = group["X_Clipped"].median()
+            g_med_y = group["Y_Clipped"].median()
+
+            if g_med_x > med_x and g_med_y > med_y:
+                label = "💎 배당성장주 (Growth+Yield)"
+            elif g_med_x > med_x and g_med_y <= med_y:
+                label = "🛡️ 고배당 방어주 (High Yield)"
+            elif g_med_x <= med_x and g_med_y > med_y:
+                label = "🚀 고성장 기대주 (High Growth)"
+            else:
+                label = "📉 소외주/가치주 (Value/Lagging)"
+
+            cluster_info.append({"Cluster": c, "Label": label, "Count": len(group)})
+
+        return df, pd.DataFrame(cluster_info), best_eps
+
+
+class Visualizer:
+    def plot(self, df, cluster_info, date_str, eps):
+        plt.figure(figsize=config.FIG_SIZE)
+
+        # 1. 노이즈 (흐릿하게) - 원본 값 사용하되 너무 큰 건 잘림
+        noise = df[df["Cluster"] == -1]
+        plt.scatter(
+            noise["X_Raw"],
+            noise["Y_Raw"],
+            c="lightgray",
+            marker=".",
+            s=10,
+            alpha=0.1,
+            label="_nolegend_",
+        )
+
+        # 2. 군집 그리기
+        label_map = dict(zip(cluster_info["Cluster"], cluster_info["Label"]))
+        unique_labels = sorted(list(set(df["Cluster"]) - {-1}))
+        colors = plt.cm.Set1(np.linspace(0, 1, len(unique_labels)))
+
+        for k, col in zip(unique_labels, colors):
+            group = df[df["Cluster"] == k]
+            label_text = label_map.get(k, f"G{k}")
+
+            plt.scatter(
+                group["X_Raw"],
+                group["Y_Raw"],
+                s=np.log1p(group["Marcap"]) * 3 + 50,
+                color=col,
+                label=f"{label_text}",
+                alpha=0.8,
+                edgecolors="w",
+            )
+
+            cx, cy = group["X_Raw"].median(), group["Y_Raw"].median()
+            plt.text(
+                cx,
+                cy,
+                f"G{k}",
+                fontsize=12,
+                fontweight="bold",
+                bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=2),
+            )
+
+        # 3. 텍스트
         texts = []
-        top_stocks = feats.sort_values('MarketCap', ascending=False).head(10)
-        for idx, row in top_stocks.iterrows():
-            name = row['Name'] if isinstance(row['Name'], str) else str(idx)
-            texts.append(plt.text(row['X_Momentum'], row['Y_Fundamental'], name, fontsize=9))
+        clustered_df = df[df["Cluster"] != -1]
+        top_stocks = clustered_df.sort_values("Marcap", ascending=False).head(30)
+
+        for _, row in top_stocks.iterrows():
+            texts.append(
+                plt.text(
+                    row["X_Raw"],
+                    row["Y_Raw"],
+                    row["Name"],
+                    fontsize=9,
+                    fontweight="bold",
+                )
+            )
 
         try:
-            adjust_text(texts, arrowprops=dict(arrowstyle='-', color='gray', lw=0.5))
+            adjust_text(texts, arrowprops=dict(arrowstyle="-", color="gray", lw=0.5))
         except:
             pass
 
-        plt.title(f"Market Rally Map ({date_str})", fontsize=16, fontweight='bold')
-        plt.xlabel("Dividend Momentum (Normalized)", fontsize=12)
-        plt.ylabel("Fundamental Rank (Percentile)", fontsize=12)
-        plt.grid(True, alpha=0.3, linestyle='--')
-        
-        # ---------------------------------------------------------
-        # Save Logic
-        # ---------------------------------------------------------
-        if output_folder:
-            os.makedirs(output_folder, exist_ok=True)
-            save_path = os.path.join(output_folder, f"rally_map_{date_str}.png")
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"[SUCCESS] Plot saved to: {os.path.abspath(save_path)}")
+        # 4. [핵심] 그래프 범위 제한 (Zoom In 효과)
+        # 상위 1% 값까지만 보여주도록 축 범위 설정
+        x_limit = df["X_Raw"].quantile(0.99) * 1.1  # 여유 10%
+        y_min = df["Y_Raw"].quantile(0.01) * 1.1
+        y_max = df["Y_Raw"].quantile(0.99) * 1.1
 
+        # 만약 배당이 너무 작으면 최소 10%는 보여줌
+        if x_limit < 10:
+            x_limit = 10
+
+        plt.xlim(-0.5, x_limit)
+        plt.ylim(y_min, y_max)
+
+        n_clusters = len(unique_labels)
+        plt.title(
+            f"Market Map: Dividend vs Momentum ({n_clusters} Groups) - {date_str}",
+            fontsize=16,
+        )
+        plt.xlabel("Dividend Yield (%)", fontsize=12)
+        plt.ylabel("Momentum (Return %)", fontsize=12)
+        plt.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=10)
+        plt.grid(True, linestyle="--", alpha=0.3)
+
+        out_dir = os.path.abspath(config.OUTPUT_FOLDER)
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
+        save_path = os.path.join(out_dir, f"dbscan_market_map_{date_str}.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+        cluster_info.to_csv(
+            os.path.join(out_dir, f"cluster_summary_{date_str}.csv"),
+            index=False,
+            encoding=config.CSV_ENCODING,
+        )
+        df.to_csv(
+            os.path.join(out_dir, f"cluster_details_{date_str}.csv"),
+            index=False,
+            encoding=config.CSV_ENCODING,
+        )
+
+        print(f"[저장 완료] {save_path}")
+        print("\n[군집 요약]")
+        print(cluster_info[["Label", "Count"]].to_string(index=False))
         plt.show()
 
-def get_valid_date():
-    """사용자로부터 유효한 날짜 입력 받기 (Validation 포함)"""
-    default_date = "2024-05-20"
-    
-    while True:
-        user_input = input(f"\n>> 분석할 날짜를 입력하세요 (YYYY-MM-DD) [Enter for {default_date}]: ").strip()
-        
-        # 1. 빈 입력 -> 기본값 사용
-        if not user_input:
-            return default_date
-            
-        # 2. 날짜 형식 검증
-        try:
-            # 단순히 파싱 가능 여부만 체크
-            pd.to_datetime(user_input)
-            return user_input
-        except ValueError:
-            print("[ERR] 날짜 형식이 올바르지 않습니다. (예: 2024-05-20)")
-            continue
 
 if __name__ == "__main__":
-    PlotConfig.set_style()
-    
-    # ---------------------------------------------------------
-    # Configuration & User Input
-    # ---------------------------------------------------------
-    data_folder = r".\output"  # 출력 폴더
-    target_date = get_valid_date()
-    
-    print(f"\n[INFO] Processing date: {target_date}...")
-    
-    loader = GitHubDataLoader(repo_owner='ParkYoungsig', repo_name='StockClustering')
-    df = loader.load_date_data(target_date)
-    
-    if not df.empty:
-        viz = RallyMapVisualizer()
-        viz.run(df, target_date, output_folder=data_folder)
-    else:
-        print("[ERR] Failed to load data. Please check the date or internet connection.")
+    proc = DataProcessor()
+    auto_dbscan = AutoDBSCAN()
+    viz = Visualizer()
+
+    print("=" * 60)
+    print(" [StockClustering] 주식 시장 지도 (배당 vs 모멘텀)")
+    print("=" * 60)
+
+    while True:
+        try:
+            user_input = input("\n>> 날짜 (YYYY-MM-DD) [q:종료]: ").strip()
+            if not user_input:
+                continue
+            if user_input.lower() in ["q", "quit"]:
+                break
+            if "python" in user_input:
+                continue
+
+            df = proc.load_snapshot(user_input)
+            if df.empty:
+                print("데이터 없음")
+                continue
+
+            df_clustered, cluster_info, final_eps = auto_dbscan.run(df)
+            viz.plot(df_clustered, cluster_info, user_input, final_eps)
+
+        except Exception as e:
+            print(f"[오류] {e}")
+            traceback.print_exc()

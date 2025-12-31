@@ -8,7 +8,7 @@ import collect_create_data
 
 # 군집화 알고리즘별 모듈
 from gmm_clustering import *
-from hdb_clustering import *
+from dbscan_clustering import *
 from kmm_clustering import *
 
 # dependencies
