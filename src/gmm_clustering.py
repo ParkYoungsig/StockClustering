@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Dict
 
@@ -12,22 +13,17 @@ import numpy as np
 import pandas as pd
 
 from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
-from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, FALLBACK_DAYS, K_RANGE
+from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, K_RANGE
+from config import MIN_CLUSTER_FRAC
 from config import (
-    GMM_COVARIANCE_TYPE,
-    GMM_N_INIT,
-    GMM_MAX_ITER,
-    GMM_REG_COVAR,
-    GMM_ALIGN_METRIC,
-)
-from config import MIN_CLUSTER_FRAC, CORR_THRESHOLD, MAX_MISSING_RATIO
-from config import (
-    UMAP_N_NEIGHBORS,
-    UMAP_MIN_DIST,
     CLUSTER_NAMES,
     CLUSTER_INTERPRETATIONS,
     CLUSTER_COLORS,
 )
+from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST
+from config import ROBUSTNESS_WINDOW_YEARS, ROBUSTNESS_EXCLUDE_EVAL_YEAR
+from config import ROBUSTNESS_PERIOD_SLICING_ENABLED
+from config import ROBUSTNESS_ROLLING_WINDOWS_ENABLED
 
 from gmm.data_loader import (
     FEATURE_COLUMNS,
@@ -44,17 +40,20 @@ from gmm.processer import (
 )
 from gmm.report_metrics import compute_report_metrics
 from gmm.reporter import (
-    build_cluster_members_all_years,
     build_cluster_members_by_year,
     build_cluster_top_tickers,
     write_text_report,
 )
+from gmm.model import evaluate_window_robustness
+from gmm.robustness import run_period_slicing_robustness, run_rolling_windows_robustness
 from gmm.visualizer import (
     plot_cluster_boxplots,
     plot_cluster_heatmap,
     plot_parallel_coords,
     plot_radar_chart,
     plot_risk_return_scatter,
+    plot_robustness_heatmap,
+    plot_robustness_vs_window,
     plot_sankey,
     plot_umap_scatter,
 )
@@ -154,28 +153,28 @@ def run_gmm_pipeline(
 
     years = df_clean["Year"].to_numpy()
 
+    # K 선택 근거(BIC(mean)/Silhouette(mean))는 manual_k 여부와 관계없이 항상 산출
+    (
+        suggested_k,
+        bic_scores,
+        silhouette_by_k,
+        best_k_mean,
+    ) = select_best_k(
+        X_feats,
+        years,
+        K_RANGE,
+        manual_k=None,
+        results_dir=results_dir,
+        file_prefix=FILE_PREFIX,
+    )
+    k_values = list(K_RANGE)
+
     if manual_k is None:
-        final_k, bic_scores, stability_by_k, elbow_k, best_k_mean, best_k_median = (
-            select_best_k(
-                X_feats,
-                years,
-                K_RANGE,
-                manual_k=None,
-                results_dir=results_dir,
-            )
-        )
-        k_values = list(K_RANGE)
+        final_k = int(suggested_k)
+        logger.info(f"자동 K 사용: K={final_k}")
     else:
         final_k = int(manual_k)
-        bic_scores, k_values, stability_by_k, elbow_k, best_k_mean, best_k_median = (
-            [],
-            [],
-            {},
-            None,
-            None,
-            None,
-        )
-        logger.info(f"수동 K 사용: K={final_k}")
+        logger.info(f"수동 K 사용: K={final_k} (추천: BIC(mean)={best_k_mean})")
 
     labels_map, probs_map, _quality_map, last_model, sort_feature = train_gmm_per_year(
         X_feats, years, df_clean.index, feature_cols_used, final_k
@@ -184,36 +183,93 @@ def run_gmm_pipeline(
     target_year, df_latest = get_latest_year_frame(df_clean, labels_map)
     df_valid, _cluster_sizes, noise_summary = filter_noise(df_latest, MIN_CLUSTER_FRAC)
 
+    # 핵심 산출물 외 나머지는 appendix로 분리
+    appendix_dir = results_dir / "gmm_appendix"
+    appendix_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Robustness: 기간(윈도우) 바꿔도 군집이 유지되는지 ---
+    robustness_summary = evaluate_window_robustness(
+        X_feats,
+        years,
+        k=final_k,
+        window_years=list(ROBUSTNESS_WINDOW_YEARS),
+        eval_year=int(target_year),
+        exclude_eval_year=bool(ROBUSTNESS_EXCLUDE_EVAL_YEAR),
+    )
+
+    if robustness_summary and robustness_summary.get("status") == "ok":
+        win_years = [int(w) for w in ROBUSTNESS_WINDOW_YEARS]
+        scores = robustness_summary.get("scores") or {}
+        ari_series = []
+        nmi_series = []
+        for w in win_years:
+            row = scores.get(f"W{int(w)}") or {}
+            ari_series.append(
+                float(row.get("ari_vs_all"))
+                if row.get("status") == "ok"
+                else float("nan")
+            )
+            nmi_series.append(
+                float(row.get("nmi_vs_all"))
+                if row.get("status") == "ok"
+                else float("nan")
+            )
+
+        plot_robustness_vs_window(
+            win_years,
+            ari_series,
+            nmi_series,
+            results_dir / f"{FILE_PREFIX}robustness_vs_window.png",
+            title="Robustness vs Training Window (ARI/NMI vs ALL)",
+        )
+
+        pair = robustness_summary.get("pairwise") or {}
+        labels = pair.get("labels") or []
+        ari_mat = pair.get("ari")
+        nmi_mat = pair.get("nmi")
+        if ari_mat is not None and len(labels) > 0:
+            plot_robustness_heatmap(
+                ari_mat,
+                list(labels),
+                appendix_dir / f"{FILE_PREFIX}robustness_pairwise_ari.png",
+                title="Pairwise ARI (Higher is Better)",
+            )
+        if nmi_mat is not None and len(labels) > 0:
+            plot_robustness_heatmap(
+                nmi_mat,
+                list(labels),
+                appendix_dir / f"{FILE_PREFIX}robustness_pairwise_nmi.png",
+                title="Pairwise NMI (Higher is Better)",
+            )
+
     means, stds, cluster_counts = compute_cluster_stats(df_valid, feature_cols_used)
 
-    members_map = build_cluster_members_all_years(df_clean, labels_map)
     members_by_year = build_cluster_members_by_year(df_clean, labels_map)
     top_tickers_map = build_cluster_top_tickers(df_valid, top_n=10)
 
-    df_valid.to_csv(results_dir / f"{FILE_PREFIX}final_clustered_data.csv", index=False)
-    if probs_map and target_year in probs_map:
-        probs_map[target_year].to_csv(
-            results_dir / f"{FILE_PREFIX}final_probabilities_latest.csv"
-        )
+    # CSV는 제출/공유용으로 members_by_year만 저장합니다.
+    # 포맷: year + cluster_0~cluster_3 컬럼(각 셀은 줄바꿈으로 멤버 나열)
+    if members_by_year:
+        years_sorted = sorted(members_by_year.keys())
+        cluster_ids = list(range(int(final_k))) if int(final_k) > 0 else [0, 1, 2, 3]
+        rows = []
+        for y in years_sorted:
+            per_c = members_by_year.get(int(y)) or {}
+            row = {"year": int(y)}
+            for cid in cluster_ids:
+                members = per_c.get(int(cid)) or []
+                row[f"cluster_{int(cid)}"] = "\n".join(map(str, members))
+            rows.append(row)
 
-    pd.DataFrame(
-        [(cid, name) for cid, names in members_map.items() for name in names],
-        columns=["cluster", "member"],
-    ).to_csv(results_dir / f"{FILE_PREFIX}cluster_members_all_years.csv", index=False)
-
-    # 연도별 멤버 요약 추가 저장
-    rows_by_year = []
-    for year, m in members_by_year.items():
-        for cid, names in m.items():
-            for name in names:
-                rows_by_year.append((year, cid, name))
-    if rows_by_year:
-        pd.DataFrame(rows_by_year, columns=["year", "cluster", "member"]).to_csv(
-            results_dir / f"{FILE_PREFIX}cluster_members_by_year.csv", index=False
+        pd.DataFrame(rows).to_csv(
+            appendix_dir / f"{FILE_PREFIX}cluster_members_by_year.csv",
+            index=False,
+            encoding="utf-8-sig",
+            lineterminator="\n",
         )
 
     save_artifacts(
-        results_dir,
+        appendix_dir,
         scaler,
         labels_map,
         final_k,
@@ -238,54 +294,50 @@ def run_gmm_pipeline(
         horizon_return=20,
     )
 
-    write_text_report(
-        results_dir / f"{FILE_PREFIX}report.txt",
-        load_stats or {},
-        prep_stats or {},
-        bic_scores or [],
-        k_values or [],
-        final_k,
-        np.array(pca_explained) if pca_explained is not None else np.array([]),
-        means,
-        stds,
-        cluster_counts,
-        top_tickers_map,
-        noise_summary=noise_summary,
-        stability_summary=(
-            {"mean_by_k": stability_by_k, "elbow_k": elbow_k}
-            if stability_by_k
-            else None
-        ),
-        quality_summary=report_metrics.get("quality_summary"),
-        silhouette_summary=report_metrics.get("silhouette_summary"),
-        transition_summary=report_metrics.get("transition_summary"),
-        ex_post_summary=report_metrics.get("ex_post_summary"),
-        best_k_mean=best_k_mean,
-        best_k_median=best_k_median,
-        label_alignment_feature=sort_feature,
-        cluster_names=CLUSTER_NAMES,
-        cluster_interpretations=CLUSTER_INTERPRETATIONS,
-    )
+    # --- Robustness: 기간 슬라이싱(정석) ---
+    if ROBUSTNESS_PERIOD_SLICING_ENABLED:
+        try:
+            run_period_slicing_robustness(
+                df_base=df_clean,
+                feature_cols=feature_cols,
+                results_dir=appendix_dir,
+                file_prefix=FILE_PREFIX,
+            )
+        except Exception as e:
+            logger.warning(f"기간 슬라이싱 robustness 건너뜀: {e}")
+
+    # --- Robustness: 36개월 롤링(1년 스텝), K=4 고정 ---
+    rolling_robustness_summary = None
+    if ROBUSTNESS_ROLLING_WINDOWS_ENABLED:
+        try:
+            rolling_robustness_summary = run_rolling_windows_robustness(
+                df_base=df_clean,
+                feature_cols=feature_cols,
+                results_dir=appendix_dir,
+                file_prefix=FILE_PREFIX,
+            )
+        except Exception as e:
+            logger.warning(f"롤링 윈도우 robustness 건너뜀: {e}")
 
     plot_cluster_heatmap(
         means, results_dir / f"{FILE_PREFIX}heatmap.png", cluster_names=CLUSTER_NAMES
     )
     plot_radar_chart(
         means,
-        results_dir / f"{FILE_PREFIX}radar.png",
+        appendix_dir / f"{FILE_PREFIX}radar.png",
         cluster_names=CLUSTER_NAMES,
         cluster_colors=CLUSTER_COLORS,
     )
     plot_parallel_coords(
         df_valid,
         feature_cols_used,
-        results_dir / f"{FILE_PREFIX}parallel.png",
+        appendix_dir / f"{FILE_PREFIX}parallel.png",
         cluster_names=CLUSTER_NAMES,
         cluster_colors=CLUSTER_COLORS,
     )
     plot_risk_return_scatter(
         means,
-        results_dir / f"{FILE_PREFIX}risk_return.png",
+        appendix_dir / f"{FILE_PREFIX}risk_return.png",
         cluster_names=CLUSTER_NAMES,
         cluster_colors=CLUSTER_COLORS,
     )
@@ -305,7 +357,11 @@ def run_gmm_pipeline(
             cluster_colors=CLUSTER_COLORS,
         )
 
-    embedding = compute_umap_embedding(X_feats)
+    embedding = compute_umap_embedding(
+        X_feats,
+        n_neighbors=int(UMAP_N_NEIGHBORS),
+        min_dist=float(UMAP_MIN_DIST),
+    )
     if embedding is not None and len(embedding) == len(df_clean):
         labels_series = pd.Series(-1, index=df_clean.index)
         for year, lbl in labels_map.items():
@@ -320,11 +376,70 @@ def run_gmm_pipeline(
             cluster_colors=CLUSTER_COLORS,
         )
 
+    # --- 정리: 루트에는 핵심 8개만 남기고 나머지는 appendix로 이동 ---
+    core_files = {
+        f"{FILE_PREFIX}bic_curve_mean.png",
+        f"{FILE_PREFIX}silhouette_curve_mean.png",
+        f"{FILE_PREFIX}cluster_boxplots.png",
+        f"{FILE_PREFIX}heatmap.png",
+        f"{FILE_PREFIX}robustness_vs_window.png",
+        f"{FILE_PREFIX}sankey.html",
+        f"{FILE_PREFIX}umap.png",
+        f"{FILE_PREFIX}report.txt",
+    }
+
+    def _move_to_appendix(p: Path) -> None:
+        dest = appendix_dir / p.name
+        if dest.exists():
+            if dest.is_dir():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+        shutil.move(str(p), str(dest))
+
+    try:
+        for p in results_dir.iterdir():
+            if p.name == "gmm_appendix":
+                continue
+            # gmm_artifacts(폴더) 포함: prefix로 시작하는 파일/폴더는 이동 대상
+            if p.name.startswith(FILE_PREFIX) and p.name not in core_files:
+                _move_to_appendix(p)
+    except Exception as e:
+        logger.warning(f"appendix 정리 단계 건너뜀: {e}")
+
+    # 리포트는 모든 산출물 저장 이후 작성(산출물 리스트 누락 방지)
+    write_text_report(
+        results_dir / f"{FILE_PREFIX}report.txt",
+        load_stats or {},
+        prep_stats or {},
+        bic_scores or [],
+        silhouette_by_k or {},
+        k_values or [],
+        final_k,
+        np.array(pca_explained) if pca_explained is not None else np.array([]),
+        means,
+        stds,
+        cluster_counts,
+        top_tickers_map,
+        noise_summary=noise_summary,
+        quality_summary=report_metrics.get("quality_summary"),
+        silhouette_summary=report_metrics.get("silhouette_summary"),
+        # transition_summary 전달 삭제
+        ex_post_summary=report_metrics.get("ex_post_summary"),
+        robustness_summary=robustness_summary,
+        rolling_robustness_summary=rolling_robustness_summary,
+        best_k_mean=best_k_mean,
+        label_alignment_feature=sort_feature,
+        cluster_names=CLUSTER_NAMES,
+        cluster_interpretations=CLUSTER_INTERPRETATIONS,
+    )
+
     msg = (
         f"GMM 분석 완료 (최종 K: {final_k}, 최신 연도: {target_year}, "
         f"유효 샘플: {len(df_valid)})"
     )
     logger.info(msg)
+
     return msg
 
 
