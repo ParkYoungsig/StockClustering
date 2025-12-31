@@ -5,6 +5,7 @@ data/
 data_old/
 *.parquet
 *.csv
+kmeans_outputs/
 
 # 주식 종목 stock_list는 필수
 !list/stock_list.csv

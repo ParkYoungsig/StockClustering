@@ -162,18 +162,27 @@ def _write_report(
 
     # load_stats 키가 변경되어도 대응하도록 주요 카운트를 보정합니다.
     # data_loader는 과거에 `rows_raw`/`rows_snapshots`를 반환할 수 있습니다.
-    total_files_val = ls.get("total_files") or ls.get("rows_raw")
-    snapshots_val = ls.get("snapshots") or ls.get("rows_snapshots")
+    total_files_val = (
+        ls.get("total_files") or ls.get("rows_raw") or ps.get("rows_before")
+    )
+    snapshots_val = (
+        ls.get("snapshots") or ls.get("rows_snapshots") or ps.get("rows_after_dropna")
+    )
 
     f.write(f"- 읽은 파일 수: {total_files_val}\n")
     f.write(f"- 사용 스냅샷 수: {snapshots_val}\n")
-    if "start_year" in ls:
+    if ls.get("start_year") is not None or ls.get("end_year") is not None:
         f.write(f"- 분석 연도 범위: {ls.get('start_year')} - {ls.get('end_year')}\n")
-        f.write(f"- 폴백 윈도우(일): {ls.get('fallback_days')}\n")
-    else:
+        if ls.get("fallback_days") is not None:
+            f.write(f"- 폴백 윈도우(일): {ls.get('fallback_days')}\n")
+    elif ls.get("reference_date") or ls.get("fallback_date"):
         f.write(
             f"- 기준일: {ls.get('reference_date')} (폴백: {ls.get('fallback_date')})\n"
         )
+    elif target_year is not None:
+        f.write(f"- 최신 분석 연도(추정): {target_year}\n")
+    else:
+        f.write("- 분석 연도 정보: (없음)\n")
     f.write(f"- 결측 제거 후 최종 행 수: {ps.get('rows_after_dropna')}\n\n")
 
     # target_year 라벨 준비
