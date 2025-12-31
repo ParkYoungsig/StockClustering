@@ -130,7 +130,7 @@ feature_cols: List[str] = [
 """
 
 # 프로젝트 루트 경로(현재 파일: <root>/src/config.py)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # ==========================================
 # [프로젝트 경로 설정]
@@ -147,7 +147,50 @@ SNAPSHOT_FREQ = "Y"  # 스냅샷 주기 ("M": 월말, "Y": 연말)
 START_YEAR = 2015  # 분석 시작 연도
 END_YEAR = None  # 분석 종료 연도 (None일 경우 데이터의 마지막 연도까지)
 FALLBACK_DAYS = 7  # 스냅샷 추출 시 데이터 부재 시 허용할 조회 범위(일)
-K_RANGE = range(3, 6)  # GMM 클러스터 개수(K) 탐색 범위 (3 ~ 5)
+K_RANGE = range(2, 10)  # GMM 클러스터 개수(K) 탐색 범위 (2 ~ 9)
+
+# ==========================================
+# [Robustness 설정]
+# - 학습 기간(윈도우)을 바꿔도 평가셋(기본: 최신 연도)에서 군집 할당이 얼마나 유지되는지
+#   ARI/NMI로 정량화합니다.
+# - exclude_eval_year=True이면 평가 연도 데이터는 학습에서 제외(일종의 OOS)합니다.
+# ==========================================
+ROBUSTNESS_WINDOW_YEARS = [3, 5, 7, 10]
+ROBUSTNESS_EXCLUDE_EVAL_YEAR = True
+
+# ==========================================
+# [Robustness: 기간 슬라이싱 비교]
+# - 예: 전체(2015-최신), 최근(2017-최신), 과거(2015-2020)
+# - 각 케이스별로: K 선택, 클러스터 평균, 해석/중심 유사도 비교 결과를 저장
+# - 기본은 OFF (한 번 실행에 여러 번 학습되므로 오래 걸릴 수 있음)
+# ==========================================
+ROBUSTNESS_PERIOD_SLICING_ENABLED = False
+
+# end_year가 None이면 데이터의 최신 연도로 대체됩니다.
+ROBUSTNESS_PERIOD_CASES = [
+    {"name": "A_full", "start_year": START_YEAR, "end_year": END_YEAR},
+    {"name": "B_recent", "start_year": 2017, "end_year": END_YEAR},
+    {"name": "C_early", "start_year": START_YEAR, "end_year": 2020},
+]
+
+# ==========================================
+# [Robustness: 36개월 롤링(1년 스텝), K 고정]
+# - 사용자가 지정한 8개 윈도우를 그대로 실행합니다.
+# - 각 윈도우에서 동일 피처/동일 전처리/동일 K로 학습 후,
+#   최신 연도 클러스터 중심(평균 벡터)을 기준으로 구조 유사도를 비교합니다.
+# ==========================================
+ROBUSTNESS_ROLLING_WINDOWS_ENABLED = False
+ROBUSTNESS_ROLLING_K_FIXED = 4
+ROBUSTNESS_ROLLING_WINDOWS = [
+    (2015, 2017),
+    (2016, 2018),
+    (2017, 2019),
+    (2018, 2020),
+    (2019, 2021),
+    (2020, 2022),
+    (2021, 2023),
+    (2022, 2024),
+]
 GMM_COVARIANCE_TYPE = "diag"  # 롤링/소표본 안정성을 위한 공분산 구조
 GMM_N_INIT = 1  # warm start 활용 위해 1회 초기화
 GMM_MAX_ITER = 300

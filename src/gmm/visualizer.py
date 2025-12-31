@@ -1,6 +1,6 @@
 """GMM 기반 클러스터링(시장 레짐) 분석 결과 시각화 유틸리티.
 
-본 모듈은 GMM 파이프라인에서 생성되는 평가 지표(BIC, 안정성 등)와
+본 모듈은 GMM 파이프라인에서 생성되는 평가 지표(BIC/Silhouette 등)와
 클러스터별 특성(평균/분포), 연도 간 레짐 전이 등을 이미지/HTML로 저장합니다.
 """
 
@@ -77,6 +77,20 @@ def plot_bic_curve(
     _save_and_close(fig, output_path)
 
 
+def plot_silhouette_curve(
+    k_values: List[int], scores: List[float], output_path: Path
+) -> None:
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(k_values, scores, marker="o", color="tab:blue")
+    ax.set(
+        xlabel="K",
+        ylabel="Silhouette",
+        title="Silhouette Scores (Higher is Better)",
+    )
+    ax.grid(True, linestyle="--", alpha=0.6)
+    _save_and_close(fig, output_path)
+
+
 def plot_cluster_heatmap(
     cluster_means: pd.DataFrame,
     output_path: Path,
@@ -93,15 +107,52 @@ def plot_cluster_heatmap(
     _save_and_close(fig, output_path)
 
 
-def plot_stability_curve(
-    k_values: List[int], stability_scores: List[float], output_path: Path
+def plot_robustness_vs_window(
+    window_years: List[int],
+    ari_scores: List[float],
+    nmi_scores: List[float],
+    output_path: Path,
+    *,
+    title: str = "Robustness vs Window (Higher is Better)",
 ) -> None:
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(k_values, stability_scores, marker="o", color="tab:green")
-    ax.set(
-        xlabel="K", ylabel="Stability Score", title="Stability vs K (Higher is Better)"
-    )
+    """윈도우 길이별 ARI/NMI 점수를 한 그림에 저장합니다."""
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(window_years, ari_scores, marker="o", label="ARI vs ALL")
+    ax.plot(window_years, nmi_scores, marker="o", label="NMI vs ALL")
+    ax.set(xlabel="Training Window (years)", ylabel="Score", title=title)
+    ax.set_ylim(-0.05, 1.05)
     ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend(loc="lower right")
+    _save_and_close(fig, output_path)
+
+
+def plot_robustness_heatmap(
+    score_matrix: np.ndarray,
+    labels: List[str],
+    output_path: Path,
+    *,
+    title: str,
+    vmin: float = 0.0,
+    vmax: float = 1.0,
+) -> None:
+    """윈도우 시나리오 간 pairwise 점수(ARI/NMI) 히트맵을 저장합니다."""
+
+    if score_matrix is None or len(labels) == 0:
+        return
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(
+        score_matrix,
+        xticklabels=labels,
+        yticklabels=labels,
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
+        annot=True,
+        fmt=".2f",
+        ax=ax,
+    )
+    ax.set_title(title)
     _save_and_close(fig, output_path)
 
 
@@ -278,6 +329,8 @@ def plot_sankey(
         fig.write_image(str(output_path), scale=2)
     else:
         fig.write_html(str(output_path))
+
+
 def plot_risk_return_scatter(
     cluster_means: pd.DataFrame,
     output_path: Path,

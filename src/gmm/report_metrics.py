@@ -2,7 +2,6 @@
 
 - GMM 품질(소속확률 기반)
 - Silhouette (거리 기반 분리도)
-- 상태 전이/유지율
 - 사후 성과(Forward Return/Drawdown)
 
 주의: 이 모듈은 '계산'만 담당하고, 출력 포맷/파일 저장은 reporter가 담당합니다.
@@ -79,95 +78,15 @@ def compute_silhouette_summary(
     try:
         overall = float(silhouette_score(X_valid, y_valid, metric="euclidean"))
         s_samples = silhouette_samples(X_valid, y_valid, metric="euclidean")
-        by_cluster = (
-            pd.Series(s_samples)
-            .groupby(pd.Series(y_valid))
-            .mean()
-            .to_dict()
-        )
+        by_cluster = pd.Series(s_samples).groupby(pd.Series(y_valid)).mean().to_dict()
         return {"overall": overall, "by_cluster": by_cluster}
     except Exception:
         return None
 
 
-def compute_transition_and_expost(
-    df_valid: pd.DataFrame,
-    horizon_return: int = 20,
-) -> tuple[Optional[Dict], Optional[pd.DataFrame]]:
-    """Date/Ticker/Close가 있을 때만 시간 전이/사후성과를 계산합니다."""
-
-    if df_valid is None or df_valid.empty:
-        return None, None
-
-    needed_cols = {"Date", "Ticker", "Close", "cluster"}
-    if not needed_cols.issubset(set(df_valid.columns)):
-        return None, None
-
-    df_t = df_valid[["Date", "Ticker", "Close", "cluster"]].copy()
-    df_t["Date"] = pd.to_datetime(df_t["Date"], errors="coerce")
-
-    # 'Close'가 중복 컬럼이거나(object/list 등) 수치가 아닐 때를 대비해
-    # 단일 numeric 시리즈로 정규화한 '__close'를 사용합니다.
-    close_raw = df_t.loc[:, "Close"]
-    if isinstance(close_raw, pd.DataFrame):
-        close_raw = close_raw.iloc[:, 0]
-    df_t["__close"] = pd.to_numeric(close_raw, errors="coerce")
-
-    df_t = df_t.dropna(subset=["Date", "Ticker", "__close"]).sort_values(
-        ["Ticker", "Date"]
-    )
-
-    def _transition_block(h: int) -> Dict:
-        curr = df_t["cluster"].astype(int)
-        nxt = df_t.groupby("Ticker")["cluster"].shift(-h).astype("Int64")
-        valid = nxt.notna()
-        curr_v = curr[valid]
-        nxt_v = nxt[valid].astype(int)
-
-        same = nxt_v.to_numpy() == curr_v.to_numpy()
-        persist = (
-            pd.Series(same)
-            .groupby(curr_v.reset_index(drop=True))
-            .mean()
-            .to_dict()
-        )
-        return {"h": int(h), "persistence_by_cluster": persist}
-
-    transition_summary: Dict = {
-        "horizon_1": _transition_block(1),
-        "horizon_20": _transition_block(horizon_return),
-    }
-
-    # --- ex-post ---
-    h = int(horizon_return)
-    close = df_t.groupby("Ticker")["__close"]
-    fwd_ret = close.shift(-h) / df_t["__close"] - 1.0
-
-    # forward min close in next h days (exclude today)
-    def _future_min_excl_today(s: pd.Series) -> pd.Series:
-        s2 = s.shift(-1)
-        return s2[::-1].rolling(window=h, min_periods=1).min()[::-1]
-
-    fut_min = close.transform(_future_min_excl_today)
-    fwd_dd = fut_min / df_t["__close"] - 1.0
-
-    df_t["fwd_return_20d"] = fwd_ret
-    df_t["fwd_drawdown_20d"] = fwd_dd
-
-    ex_post_summary = (
-        df_t.dropna(subset=["fwd_return_20d"])
-        .groupby("cluster")
-        .agg(
-            fwd_return_20d_mean=("fwd_return_20d", "mean"),
-            fwd_return_20d_hit_ratio=(
-                "fwd_return_20d",
-                lambda x: float((x > 0).mean()),
-            ),
-            fwd_drawdown_20d_mean=("fwd_drawdown_20d", "mean"),
-        )
-    )
-
-    return transition_summary, ex_post_summary
+# note: transition/transition_summary 계산은 더 이상 사용하지 않음.
+# 대신 필요했던 ex-post(Forward return/drawdown) 계산은 compute_report_metrics
+# 내부에서 필요에 따라 수행합니다.
 
 
 def compute_report_metrics(
@@ -196,14 +115,55 @@ def compute_report_metrics(
         X_feats=X_feats,
     )
 
-    transition_summary, ex_post_summary = compute_transition_and_expost(
-        df_valid=df_valid,
-        horizon_return=horizon_return,
-    )
+    # ex-post 계산: Forward return / Drawdown (horizon_return days)
+    ex_post_summary = None
+    try:
+        needed = {"Date", "Ticker", "Close", "cluster"}
+        if (
+            df_valid is not None
+            and not df_valid.empty
+            and needed.issubset(set(df_valid.columns))
+        ):
+            df_t = df_valid[["Date", "Ticker", "Close", "cluster"]].copy()
+            df_t["Date"] = pd.to_datetime(df_t["Date"], errors="coerce")
+            close_raw = df_t.loc[:, "Close"]
+            if isinstance(close_raw, pd.DataFrame):
+                close_raw = close_raw.iloc[:, 0]
+            df_t["__close"] = pd.to_numeric(close_raw, errors="coerce")
+            df_t = df_t.dropna(subset=["Date", "Ticker", "__close"]).sort_values(
+                ["Ticker", "Date"]
+            )
+
+            h = int(horizon_return)
+            close = df_t.groupby("Ticker")["__close"]
+            fwd_ret = close.shift(-h) / df_t["__close"] - 1.0
+
+            def _future_min_excl_today(s: pd.Series) -> pd.Series:
+                s2 = s.shift(-1)
+                return s2[::-1].rolling(window=h, min_periods=1).min()[::-1]
+
+            fut_min = close.transform(_future_min_excl_today)
+            fwd_dd = fut_min / df_t["__close"] - 1.0
+            df_t["fwd_return_20d"] = fwd_ret
+            df_t["fwd_drawdown_20d"] = fwd_dd
+
+            ex_post_summary = (
+                df_t.dropna(subset=["fwd_return_20d"])
+                .groupby("cluster")
+                .agg(
+                    fwd_return_20d_mean=("fwd_return_20d", "mean"),
+                    fwd_return_20d_hit_ratio=(
+                        "fwd_return_20d",
+                        lambda x: float((x > 0).mean()),
+                    ),
+                    fwd_drawdown_20d_mean=("fwd_drawdown_20d", "mean"),
+                )
+            )
+    except Exception:
+        ex_post_summary = None
 
     return {
         "quality_summary": quality_summary,
         "silhouette_summary": silhouette_summary,
-        "transition_summary": transition_summary,
         "ex_post_summary": ex_post_summary,
     }

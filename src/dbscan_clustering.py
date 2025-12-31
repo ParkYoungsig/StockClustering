@@ -9,8 +9,8 @@ from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from adjustText import adjust_text
 
-# 설정 파일 불러오기
-import config
+# 설정 파일 불러오기 (DBSCAN 전용 설정)
+from dbscan import config
 
 plt.rcParams["font.family"] = config.FONT_FAMILY
 plt.rcParams["axes.unicode_minus"] = False

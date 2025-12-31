@@ -1,6 +1,6 @@
 """GMM 파이프라인 핵심 로직 모듈.
 
-- K 탐색(BIC/안정성)과 학습/라벨 정렬을 담당
+- K 탐색(BIC(mean)/Silhouette(mean))과 학습/라벨 정렬을 담당
 - 오케스트레이터와 리포터 사이의 순수 로직을 모아둠
 """
 
@@ -14,32 +14,17 @@ from sklearn.mixture import GaussianMixture
 
 import config
 
-from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
-from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, FALLBACK_DAYS, K_RANGE
-from config import (
-    GMM_COVARIANCE_TYPE,
-    GMM_N_INIT,
-    GMM_MAX_ITER,
-    GMM_REG_COVAR,
-    GMM_ALIGN_METRIC,
-)
-from config import MIN_CLUSTER_FRAC, CORR_THRESHOLD, MAX_MISSING_RATIO
-from config import (
-    UMAP_N_NEIGHBORS,
-    UMAP_MIN_DIST,
-    CLUSTER_NAMES,
-    CLUSTER_INTERPRETATIONS,
-    CLUSTER_COLORS,
-)
-
 from gmm.model import (
     align_clusters,
     align_labels_by_feature,
-    compute_stability_scores,
     evaluate_bic_across_years,
+    evaluate_silhouette_across_years,
     remap_labels,
 )
-from gmm.visualizer import plot_bic_curve, plot_stability_curve
+from gmm.visualizer import (
+    plot_bic_curve,
+    plot_silhouette_curve,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,35 +35,49 @@ def select_best_k(
     k_range: Iterable[int],
     manual_k: int | None,
     results_dir: Path,
-) -> Tuple[int, List[float], Dict[int, float], int | None, int | None, int | None]:
+    file_prefix: str = "",
+) -> Tuple[
+    int,
+    List[float],
+    Dict[int, float],
+    int | None,
+]:
     """
     데이터에 가장 적합한 클러스터 개수(K)를 탐색합니다.
 
     [절차]
-    1. BIC(베이지안 정보 기준) 점수 계산
-    2. Stability(군집 안정성) 점수 계산
-    3. BIC 및 Stability 그래프 저장
+    1. BIC(베이지안 정보 기준) 점수 계산 (연도별 → mean 집계)
+    2. Silhouette 점수 계산 (연도별 → mean 집계)
+    3. mean curve 2개 저장 (BIC / Silhouette)
     4. 최적 K 결정 (자동 또는 수동)
 
     Returns:
-        Tuple: (최종 K, BIC 점수 리스트, Stability 딕셔너리, Elbow K, BIC Mean K, BIC Median K)
+        Tuple: (최종 K, mean BIC 리스트, mean silhouette_by_k, mean BIC 기준 best_k)
     """
 
-    logger.info("최적 K 탐색 시작 (BIC 및 Stability 평가)...")
+    logger.info("최적 K 탐색 시작 (BIC(mean) / Silhouette(mean) 평가)...")
 
-    # BIC 평가
-    _, mean_bic, median_bic, best_k_mean, best_k_median = evaluate_bic_across_years(
-        X, years=years, k_values=k_range
-    )
-    # 안정성 평가
-    stability_by_k, elbow_k = compute_stability_scores(X, years=years, k_values=k_range)
-
-    # 결과 시각화
     k_list = list(k_range)
-    plot_bic_curve(k_list, mean_bic, results_dir / "bic_curve_mean.png")
-    plot_stability_curve(
-        k_list, [stability_by_k[k] for k in k_list], results_dir / "stability_curve.png"
+
+    # BIC 평가 (연도별 → 평균/중앙값)
+    _, mean_bic, _median_bic, best_k_mean, _best_k_median = evaluate_bic_across_years(
+        X, years=years, k_values=k_list
     )
+
+    # Silhouette (연도별 silhouette → K별 평균)
+    _sil_per_year, sil_mean_by_k, _sil_median_by_k = evaluate_silhouette_across_years(
+        X, years=years, k_values=k_list
+    )
+
+    # 결과 시각화 (요구사항: mean curve 2개만 유지)
+    plot_bic_curve(k_list, mean_bic, results_dir / f"{file_prefix}bic_curve_mean.png")
+    if sil_mean_by_k:
+        ks = sorted(sil_mean_by_k.keys())
+        plot_silhouette_curve(
+            ks,
+            [sil_mean_by_k[k] for k in ks],
+            results_dir / f"{file_prefix}silhouette_curve_mean.png",
+        )
 
     # 최종 K 결정 (수동 설정 우선)
     if manual_k is not None:
@@ -91,7 +90,12 @@ def select_best_k(
         final_k = best_k_mean if best_k_mean is not None else k_list[0]
         logger.info(f"알고리즘 자동 선택 K: {final_k} (Mean BIC 기준)")
 
-    return final_k, mean_bic, stability_by_k, elbow_k, best_k_mean, best_k_median
+    return (
+        final_k,
+        mean_bic,
+        sil_mean_by_k,
+        best_k_mean,
+    )
 
 
 def train_gmm_per_year(
@@ -134,8 +138,8 @@ def train_gmm_per_year(
         mask = years == year
         X_year = X[mask]
 
-        # 절대 최소 2개 미만이면 학습 불가 → 스킵
-        min_required = 2
+        # GMM은 n_samples >= n_components가 필요
+        min_required = max(2, int(k))
         if X_year.shape[0] < min_required:
             quality_per_year[year] = {
                 "status": "skipped",
