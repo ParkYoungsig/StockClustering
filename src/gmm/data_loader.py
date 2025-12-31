@@ -135,6 +135,8 @@ def _merge_local_raw_files(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
     for idx, file in enumerate(files):
         try:
             df = pd.read_parquet(file)
+            # 중복 컬럼 제거(병합/전처리 안정화)
+            df = df.loc[:, ~df.columns.duplicated()]
             df_flat = df.copy()
 
             # 1) 컬럼명 변경 (종목명/종목코드 → Name/Ticker)
@@ -171,6 +173,7 @@ def _load_local(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
     if not fp.exists():
         raise FileNotFoundError(fp)
     df = pd.read_parquet(fp)
+    df = df.loc[:, ~df.columns.duplicated()]
     logger.info(
         "로컬 로드: %s행, %s컬럼 | Date: %s | Ticker: %s",
         len(df),
@@ -210,6 +213,7 @@ def _load_local_raw_merged(data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
     """완성본이 없을 때 로컬 원본 parquet을 즉석 병합하여 로드."""
 
     df = _merge_local_raw_files(data_dir)
+    df = df.loc[:, ~df.columns.duplicated()]
     logger.info(
         "로컬 원본 병합 로드: %s행, %s컬럼 | Date: %s | Ticker: %s",
         len(df),
@@ -292,8 +296,8 @@ def convert_df_to_snapshots(
 def _clean_features(df: pd.DataFrame) -> pd.DataFrame:
     """피처 결측 제거 후 분위수 클리핑 + z-score 스케일링을 수행합니다.
 
-    클리핑/스케일링은 기본적으로 Year 그룹별로 적용합니다.
-    (Ticker-Year 단위는 그룹 수가 너무 많아 대용량에서 매우 느려질 수 있음)
+    클리핑/스케일링은 (Ticker, Year) 그룹별로 적용합니다.
+    (참고: 그룹 수가 매우 많아질 수 있어 대용량에서는 느릴 수 있습니다.)
     """
 
     features = [c for c in FEATURE_COLUMNS if c in df.columns]
@@ -303,7 +307,11 @@ def _clean_features(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.dropna(subset=features).copy()
 
     frames = []
-    group_cols = ["Year"] if "Year" in cleaned.columns else []
+    group_cols = (
+        ["Ticker", "Year"]
+        if {"Ticker", "Year"}.issubset(cleaned.columns)
+        else (["Year"] if "Year" in cleaned.columns else [])
+    )
 
     if group_cols:
         for _, g in cleaned.groupby(group_cols):

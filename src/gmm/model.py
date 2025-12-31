@@ -1,7 +1,8 @@
-"""
-GMM(Gaussian Mixture Model) 모델링 및 평가 유틸리티
-- BIC(Bayesian Information Criterion) 기반 최적 K 탐색
-- 군집 안정성(Stability) 평가
+"""GMM(Gaussian Mixture Model) 모델링 및 평가 유틸리티.
+
+- BIC(Bayesian Information Criterion) 기반 K 후보 평가
+- Silhouette 기반 분리도 평가(연도별 평균/중앙값 집계)
+- 라벨 정렬(헝가리안 매칭/정렬) 및 robustness(ARI/NMI) 유틸
 """
 
 from __future__ import annotations
@@ -11,27 +12,10 @@ from typing import Dict, Iterable, List, Tuple
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.mixture import GaussianMixture
 
 import config
-
-from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
-from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, FALLBACK_DAYS, K_RANGE
-from config import (
-    GMM_COVARIANCE_TYPE,
-    GMM_N_INIT,
-    GMM_MAX_ITER,
-    GMM_REG_COVAR,
-    GMM_ALIGN_METRIC,
-)
-from config import MIN_CLUSTER_FRAC, CORR_THRESHOLD, MAX_MISSING_RATIO
-from config import (
-    UMAP_N_NEIGHBORS,
-    UMAP_MIN_DIST,
-    CLUSTER_NAMES,
-    CLUSTER_INTERPRETATIONS,
-    CLUSTER_COLORS,
-)
 
 
 def _fit_gmm_labels(
@@ -60,6 +44,9 @@ def sweep_bic_gmm(
     """주어진 K 후보군에 대해 GMM을 학습하고 BIC 점수 리스트를 반환합니다."""
     bic_scores: List[float] = []
     for k in k_values:
+        if X.shape[0] <= int(k):
+            bic_scores.append(float("nan"))
+            continue
         gm = GaussianMixture(
             n_components=k,
             covariance_type=config.GMM_COVARIANCE_TYPE,
@@ -98,84 +85,294 @@ def evaluate_bic_across_years(
         )
 
     # 전체 통계 집계
-    bic_matrix = np.array([per_year[y] for y in unique_years])
-    mean_bic = bic_matrix.mean(axis=0).tolist()
-    median_bic = np.median(bic_matrix, axis=0).tolist()
+    bic_matrix = np.array([per_year[y] for y in unique_years], dtype=float)
+    mean_bic_arr = np.nanmean(bic_matrix, axis=0)
+    median_bic_arr = np.nanmedian(bic_matrix, axis=0)
+    mean_bic = mean_bic_arr.tolist()
+    median_bic = median_bic_arr.tolist()
 
-    best_k_mean = k_values[int(np.argmin(mean_bic))]
-    best_k_median = k_values[int(np.argmin(median_bic))]
+    best_k_mean = (
+        k_values[int(np.nanargmin(mean_bic_arr))]
+        if not np.all(np.isnan(mean_bic_arr))
+        else k_values[0]
+    )
+    best_k_median = (
+        k_values[int(np.nanargmin(median_bic_arr))]
+        if not np.all(np.isnan(median_bic_arr))
+        else k_values[0]
+    )
 
     return per_year, mean_bic, median_bic, best_k_mean, best_k_median
 
 
-def compute_stability_scores(
+def evaluate_silhouette_across_years(
     X: np.ndarray,
     years: np.ndarray,
     k_values: Iterable[int],
     random_state: int = 42,
-) -> Tuple[Dict[int, float], int]:
-    """
-    연도 간 군집 중심(Center)의 변화를 추적하여 안정성(Stability)을 평가합니다.
+) -> Tuple[Dict[int, Dict[int, float]], Dict[int, float], Dict[int, float]]:
+    """연도별 silhouette를 계산하고 K별로 평균/중앙값을 집계합니다.
 
-    [알고리즘]
-    - 연속된 연도 간 클러스터 중심점의 거리를 측정하여 매칭합니다.
-    - 변화가 적을수록 높은 점수를 부여합니다.
-    - Elbow Method를 통해 안정성이 급격히 떨어지는 구간을 탐색합니다.
-
-    Returns:
-        Tuple: (K별 안정성 점수, Elbow 포인트 K)
+    - 각 연도별로 GMM을 fit하고 hard label로 silhouette_score(Euclidean)을 계산
+    - silhouette은 값이 클수록(최대 1에 가까울수록) 분리도가 좋다고 해석
     """
+
+    try:
+        from sklearn.metrics import silhouette_score
+    except Exception:
+        return {}, {}, {}
+
     k_values = list(k_values)
     unique_years = sorted(np.unique(years))
-    stability: Dict[int, float] = {}
+    per_year: Dict[int, Dict[int, float]] = {}
 
-    for k in k_values:
-        centers_per_year: Dict[int, np.ndarray] = {}
-        # 연도별 클러스터 중심점 계산
-        for year in unique_years:
-            mask = years == year
-            model, _ = _fit_gmm_labels(X[mask], k=k, random_state=random_state)
-            centers_per_year[year] = model.means_
-
-        # 연도 간 거리 측정 (Greedy Matching)
-        pairwise_distances: List[float] = []
-        for i in range(len(unique_years) - 1):
-            a, b = (
-                centers_per_year[unique_years[i]],
-                centers_per_year[unique_years[i + 1]],
+    for year in unique_years:
+        mask = years == year
+        Xy = X[mask]
+        if Xy.shape[0] <= 2:
+            continue
+        per_k: Dict[int, float] = {}
+        for k in k_values:
+            if Xy.shape[0] <= k:
+                continue
+            gm = GaussianMixture(
+                n_components=k,
+                covariance_type=config.GMM_COVARIANCE_TYPE,
+                random_state=random_state,
+                n_init=config.GMM_N_INIT,
+                max_iter=config.GMM_MAX_ITER,
+                reg_covar=config.GMM_REG_COVAR,
+                init_params="kmeans",
             )
-            dist_matrix = np.linalg.norm(a[:, None, :] - b[None, :, :], axis=2)
-            used_a = set()
-            used_b = set()
+            try:
+                labels = gm.fit_predict(Xy)
+                if len(np.unique(labels)) < 2:
+                    continue
+                per_k[k] = float(silhouette_score(Xy, labels, metric="euclidean"))
+            except Exception:
+                continue
+        if per_k:
+            per_year[int(year)] = per_k
 
-            for _ in range(min(len(a), len(b))):
-                remaining = [
-                    (dist_matrix[i, j], i, j)
-                    for i in range(len(a))
-                    for j in range(len(b))
-                    if i not in used_a and j not in used_b
-                ]
-                if not remaining:
-                    break
-                best_dist, ia, jb = min(remaining, key=lambda t: t[0])
-                used_a.add(ia)
-                used_b.add(jb)
-                pairwise_distances.append(float(best_dist))
+    if not per_year:
+        return {}, {}, {}
 
-        # 안정성 점수 계산 (거리의 역수)
-        stability[k] = (
-            float(1.0 / (1.0 + np.mean(pairwise_distances)))
-            if pairwise_distances
-            else 0.0
+    mean_by_k: Dict[int, float] = {}
+    median_by_k: Dict[int, float] = {}
+    for k in k_values:
+        vals = [v.get(k) for v in per_year.values() if k in v]
+        vals_f = [float(x) for x in vals if x is not None]
+        if not vals_f:
+            continue
+        mean_by_k[k] = float(np.mean(vals_f))
+        median_by_k[k] = float(np.median(vals_f))
+
+    return per_year, mean_by_k, median_by_k
+
+
+def evaluate_window_robustness(
+    X: np.ndarray,
+    years: np.ndarray,
+    *,
+    k: int,
+    window_years: List[int],
+    eval_year: int | None = None,
+    exclude_eval_year: bool = True,
+    random_state: int = 42,
+) -> Dict:
+    """기간(윈도우)을 바꿔도 군집이 유지되는지(robustness) 평가합니다.
+
+    - 여러 학습 윈도우(최근 N년)로 각각 GMM을 학습
+    - 동일 평가셋(기본: 최신 연도)에서 예측 라벨을 얻고
+    - baseline(ALL years) 대비 ARI/NMI를 계산
+
+    ARI/NMI는 라벨 순열(permutation)에 불변이므로 별도 라벨 매칭이 필요 없습니다.
+    """
+
+    if X is None or len(X) == 0:
+        return {"status": "skipped", "reason": "empty_X"}
+
+    years_arr = np.asarray(years)
+    uniq_raw = np.unique(years_arr)
+    unique_years: List[int] = []
+    for y in uniq_raw:
+        try:
+            if isinstance(y, float) and np.isnan(y):
+                continue
+            unique_years.append(int(y))
+        except Exception:
+            continue
+    unique_years = sorted(set(unique_years))
+    if not unique_years:
+        return {"status": "skipped", "reason": "no_years"}
+
+    eval_y = int(eval_year) if eval_year is not None else int(unique_years[-1])
+    eval_mask = years_arr == eval_y
+    n_eval = int(eval_mask.sum())
+    if n_eval < 2:
+        return {
+            "status": "skipped",
+            "reason": f"insufficient_eval_samples({n_eval})",
+            "eval_year": eval_y,
+            "k": int(k),
+        }
+
+    X_eval = X[eval_mask]
+
+    def _fit_and_predict(train_mask: np.ndarray) -> np.ndarray | None:
+        X_train = X[train_mask]
+        if X_train.shape[0] <= int(k):
+            return None
+        model = GaussianMixture(
+            n_components=int(k),
+            covariance_type=config.GMM_COVARIANCE_TYPE,
+            random_state=random_state,
+            n_init=config.GMM_N_INIT,
+            max_iter=config.GMM_MAX_ITER,
+            reg_covar=config.GMM_REG_COVAR,
+            init_params="kmeans",
         )
+        model.fit(X_train)
+        return model.predict(X_eval)
 
-    # Elbow 포인트 탐색
-    stability_values = [stability[k] for k in k_values]
-    diffs = np.diff(stability_values)
-    elbow_idx = int(np.argmin(diffs) + 1) if len(diffs) else 0
-    elbow_k = k_values[elbow_idx]
+    # baseline (ALL train years)
+    train_mask_all = np.ones_like(years_arr, dtype=bool)
+    if exclude_eval_year:
+        train_mask_all &= years_arr != eval_y
+    baseline_labels = _fit_and_predict(train_mask_all)
+    if baseline_labels is None:
+        return {
+            "status": "skipped",
+            "reason": "baseline_insufficient_train_samples",
+            "eval_year": eval_y,
+            "k": int(k),
+            "exclude_eval_year": bool(exclude_eval_year),
+        }
 
-    return stability, elbow_k
+    results: Dict[str, Dict] = {}
+    label_bank: Dict[str, np.ndarray] = {"ALL": baseline_labels}
+
+    max_train_year = eval_y - 1 if exclude_eval_year else eval_y
+    min_train_year = int(unique_years[0])
+
+    for w in window_years:
+        try:
+            w_int = int(w)
+        except Exception:
+            continue
+        if w_int <= 0:
+            continue
+
+        train_end = int(max_train_year)
+        train_start = max(min_train_year, train_end - w_int + 1)
+        train_mask = (years_arr >= train_start) & (years_arr <= train_end)
+        if exclude_eval_year:
+            train_mask &= years_arr != eval_y
+
+        pred = _fit_and_predict(train_mask)
+        key = f"W{w_int}"
+        if pred is None:
+            results[key] = {
+                "status": "skipped",
+                "train_year_start": int(train_start),
+                "train_year_end": int(train_end),
+                "n_train": int(train_mask.sum()),
+            }
+            continue
+
+        results[key] = {
+            "status": "ok",
+            "train_year_start": int(train_start),
+            "train_year_end": int(train_end),
+            "n_train": int(train_mask.sum()),
+            "ari_vs_all": float(adjusted_rand_score(baseline_labels, pred)),
+            "nmi_vs_all": float(
+                normalized_mutual_info_score(
+                    baseline_labels, pred, average_method="arithmetic"
+                )
+            ),
+        }
+        label_bank[key] = pred
+
+    # pairwise matrix (heatmap용)
+    ordered = ["ALL"] + [
+        f"W{int(w)}" for w in window_years if f"W{int(w)}" in label_bank
+    ]
+    n = len(ordered)
+    ari_mat = np.full((n, n), np.nan, dtype=float)
+    nmi_mat = np.full((n, n), np.nan, dtype=float)
+    for i in range(n):
+        for j in range(n):
+            li = label_bank.get(ordered[i])
+            lj = label_bank.get(ordered[j])
+            if li is None or lj is None:
+                continue
+            ari_mat[i, j] = adjusted_rand_score(li, lj)
+            nmi_mat[i, j] = normalized_mutual_info_score(
+                li, lj, average_method="arithmetic"
+            )
+
+    return {
+        "status": "ok",
+        "eval_year": int(eval_y),
+        "exclude_eval_year": bool(exclude_eval_year),
+        "k": int(k),
+        "n_eval": int(n_eval),
+        "scores": results,
+        "pairwise": {"labels": ordered, "ari": ari_mat, "nmi": nmi_mat},
+    }
+
+
+def cosine_similarity_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """두 행렬(a: nxd, b: mxd) 간 코사인 유사도(nxm)."""
+
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("a and b must be 2D arrays")
+    if a.shape[1] != b.shape[1]:
+        raise ValueError("a and b must have same feature dimension")
+
+    a_norm = np.linalg.norm(a, axis=1, keepdims=True)
+    b_norm = np.linalg.norm(b, axis=1, keepdims=True)
+    a_safe = np.where(a_norm == 0, 1.0, a_norm)
+    b_safe = np.where(b_norm == 0, 1.0, b_norm)
+    a_unit = a / a_safe
+    b_unit = b / b_safe
+    return a_unit @ b_unit.T
+
+
+def corr_similarity_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """두 행렬 간 피어슨 상관 유사도(nxm).
+
+    - 각 행(클러스터 중심 벡터)을 평균 0으로 센터링 후 상관 계산
+    - 0분산 벡터는 0으로 처리
+    """
+
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("a and b must be 2D arrays")
+    if a.shape[1] != b.shape[1]:
+        raise ValueError("a and b must have same feature dimension")
+
+    a0 = a - np.mean(a, axis=1, keepdims=True)
+    b0 = b - np.mean(b, axis=1, keepdims=True)
+    a_std = np.linalg.norm(a0, axis=1, keepdims=True)
+    b_std = np.linalg.norm(b0, axis=1, keepdims=True)
+    a_safe = np.where(a_std == 0, 1.0, a_std)
+    b_safe = np.where(b_std == 0, 1.0, b_std)
+    return (a0 / a_safe) @ (b0 / b_safe).T
+
+
+def match_centroids_by_similarity(similarity: np.ndarray) -> Dict[int, int]:
+    """유사도 행렬을 최대화하도록 헝가리안 매칭을 수행.
+
+    Returns:
+        mapping: row_index -> col_index
+    """
+
+    if similarity.ndim != 2:
+        raise ValueError("similarity must be 2D")
+    # cost = -similarity (maximize similarity)
+    row_ind, col_ind = linear_sum_assignment(-similarity)
+    return {int(r): int(c) for r, c in zip(row_ind, col_ind)}
 
 
 def align_labels_by_feature(
