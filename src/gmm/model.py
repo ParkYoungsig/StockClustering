@@ -413,18 +413,29 @@ def align_clusters(
     """이전/현재 클러스터 중심을 헝가리안 정렬로 매칭한다."""
 
     def _cov_mat(cov_entry: np.ndarray) -> np.ndarray:
-        return np.diag(cov_entry) if cov_entry.ndim == 1 else cov_entry
+        c = np.asarray(cov_entry)
+        return np.diag(c) if c.ndim == 1 else c
+
+    # Normalize center arrays to 2D (n_clusters x n_features)
+    prev_centers = np.asarray(prev_centers)
+    curr_centers = np.asarray(curr_centers)
+    if prev_centers.ndim == 1:
+        prev_centers = prev_centers.reshape(1, -1)
+    if curr_centers.ndim == 1:
+        curr_centers = curr_centers.reshape(1, -1)
 
     if metric == "bhattacharyya":
-        k = curr_centers.shape[0]
-        cost_matrix = np.zeros((k, k))
+        k = int(curr_centers.shape[0])
+        cost_matrix = np.zeros((k, k), dtype=float)
         for i in range(k):
             for j in range(k):
-                cost_matrix[i, j] = bhattacharyya_distance(
-                    curr_centers[i],
-                    _cov_mat(curr_covs[i]),
-                    prev_centers[j],
-                    _cov_mat(prev_covs[j]),
+                cost_matrix[i, j] = float(
+                    bhattacharyya_distance(
+                        curr_centers[i],
+                        _cov_mat(curr_covs[i]),
+                        prev_centers[j],
+                        _cov_mat(prev_covs[j]),
+                    )
                 )
     else:
         cost_matrix = cdist(curr_centers, prev_centers, metric=metric)
@@ -441,10 +452,29 @@ def bhattacharyya_distance(
     m1: np.ndarray, S1: np.ndarray, m2: np.ndarray, S2: np.ndarray
 ) -> float:
     """두 가우시안 분포 간 Bhattacharyya 거리(대각/풀 공분산 지원)."""
+    # Coerce inputs to arrays and normalize shapes
+    m1 = np.asarray(m1).ravel()
+    m2 = np.asarray(m2).ravel()
+    S1 = np.asarray(S1)
+    S2 = np.asarray(S2)
 
-    # Ensure 2D cov
+    # Ensure covariance matrices are 2D
     S1 = np.diag(S1) if S1.ndim == 1 else S1
     S2 = np.diag(S2) if S2.ndim == 1 else S2
+
+    # Ensure consistent dimensionality
+    if m1.ndim != 1 or m2.ndim != 1:
+        m1 = np.ravel(m1)
+        m2 = np.ravel(m2)
+
+    d = m1.shape[0]
+    if m2.shape[0] != d:
+        raise ValueError("m1 and m2 must have the same length")
+    if S1.shape != (d, d):
+        raise ValueError("S1 must be shape (d,d)")
+    if S2.shape != (d, d):
+        raise ValueError("S2 must be shape (d,d)")
+
     S = 0.5 * (S1 + S2)
 
     try:
@@ -453,11 +483,16 @@ def bhattacharyya_distance(
         inv_S = np.linalg.pinv(S)
 
     dm = (m2 - m1).reshape(-1, 1)
-    term1 = 0.125 * float(dm.T @ inv_S @ dm)
+    quad = dm.T @ inv_S @ dm
+    # quad may be a 1x1 array; squeeze to scalar safely
+    quad_val = float(np.squeeze(quad))
+    term1 = 0.125 * quad_val
 
     det_S = np.linalg.det(S)
     det_S1 = np.linalg.det(S1)
     det_S2 = np.linalg.det(S2)
     eps = 1e-12
-    term2 = 0.5 * np.log((det_S + eps) / np.sqrt((det_S1 + eps) * (det_S2 + eps)) + eps)
+    # guard against negative/zero det issues
+    denom = np.sqrt((det_S1 + eps) * (det_S2 + eps))
+    term2 = 0.5 * float(np.log((det_S + eps) / denom + eps))
     return float(term1 + term2)

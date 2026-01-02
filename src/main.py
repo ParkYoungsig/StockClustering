@@ -98,21 +98,21 @@ def main():
 
             logger.info("End   loading data")
 
-            # logger.info("Start KMeans clustering")
-            # cfg = init_kmeans_clustering()
-            # kmm_report = run_kmeans_clustering(cfg)
-            # logger.info("End   KMeans clustering")
+            logger.info("Start KMeans clustering")
+            cfg = init_kmeans_clustering()
+            kmm_report = run_kmeans_clustering(cfg)
+            logger.info("End   KMeans clustering")
 
             logger.info("Start GMM clustering")
             gmm = GMM(df)
             gmm_report = gmm.run()
             logger.info("End   GMM clustering")
 
-            # # logger.info("Start HDBScan clustering")
-            # proc = DataProcessor()
-            # auto_dbscan = AutoDBSCAN()
-            # viz = Visualizer()
-            # # logger.info("End   HDBScan clustering")
+            logger.info("Start HDBScan clustering")
+            proc = DataProcessor()
+            auto_dbscan = AutoDBSCAN()
+            viz = Visualizer()
+            logger.info("End   HDBScan clustering")
 
             logger.info("Start generating report ")
             # reportAll(kms_report, gmm_report, hdb_report)
