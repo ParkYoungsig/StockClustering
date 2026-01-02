@@ -18,13 +18,17 @@ warnings.filterwarnings("ignore")
 # ------------------------------------------------------------------
 # 설정파일(/src/config.py)에서 List 파일과 데이터 파일 위치 가져오기
 # -------------------------------------------------------------------
-from config import DATA_FILE_LOCATION, LIST_FILE_LOCATION
+# from config import DATA_FILE_LOCATION, LIST_FILE_LOCATION, INPUT_FILE_LOCATION, OUTPUT_FILE_LOCATION
+from config import DATA_FILE_LOCATION, INPUT_FILE_LOCATION, OUTPUT_FILE_LOCATION
 
-DATA_DIR = Path(DATA_FILE_LOCATION).resolve()
-LIST_DIR = Path(LIST_FILE_LOCATION).resolve()
-STOCK_LIST_FILE = LIST_DIR / "stock_list.csv"
-FINANCIALS_FILE = LIST_DIR / "financials.xlsx"
-DELIST_REPORT_FILE = LIST_DIR / "stock_delist.md"
+DATA_DIR     = Path(DATA_FILE_LOCATION).resolve()
+# LIST_DIR     = Path(LIST_FILE_LOCATION).resolve()
+INPUT_DIR    = Path(INPUT_FILE_LOCATION).resolve()
+OUTPUT_DIR   = Path(OUTPUT_FILE_LOCATION).resolve()
+
+STOCK_LIST_FILE     = INPUT_DIR  / "stock_list.csv"
+FINANCIALS_FILE     = INPUT_DIR  / "financials.xlsx"
+DELIST_REPORT_FILE  = INPUT_DIR / "stock_delist.md"
 
 # Technical analysis constants
 SQRT_252 = np.sqrt(252)

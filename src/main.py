@@ -111,12 +111,12 @@ def main():
             logger.info("Start HDBScan clustering")
             proc = DataProcessor()
             auto_dbscan = AutoDBSCAN()
-            viz = Visualizer()
+            report_AutoDBScan(proc=proc, auto_dbscan=auto_dbscan)
             logger.info("End   HDBScan clustering")
 
-            logger.info("Start generating report ")
-            # reportAll(kms_report, gmm_report, hdb_report)
-            logger.info("End generating report ")
+            # logger.info("Start generating report ")
+            # # reportAll(kms_report, gmm_report, hdb_report)
+            # logger.info("End generating report ")
 
         except KeyboardInterrupt:
             logger.info("Analysis interrupted")

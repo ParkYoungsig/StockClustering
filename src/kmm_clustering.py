@@ -4,13 +4,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from kmm.kmm_align_clusters_mixed import align_cluster_labels_wide_csv_mixed
 from kmm.kmm_pca_maps_aligned import plot_aligned_pca_maps
 from kmm.kmm_pipeline import load_parquets_to_df_all, rolling_cluster_table
 
 # 박영식 수정된 config.py 파일에서 설정값 가져오기
-from config import data_folder, dates, feature_cols
+from config import DATA_FILE_LOCATION, OUTPUT_FILE_LOCATION
+# from config import data_folder, dates, feature_cols
+from config import dates, feature_cols
 
 
 @dataclass
@@ -29,7 +32,8 @@ class KMeansClusteringConfig:
     k_max: int = 5
     n_init: int = 200
     corr_drop_mode: str = "baseline"
-    output_root: str = "kmeans_outputs"
+    OUTPUT_DIR   = Path(OUTPUT_FILE_LOCATION).resolve()
+    output_root: str = OUTPUT_DIR / "kmeans_outputs"
     save_per_date: bool = True
     make_plots: bool = True
     stability_seeds: Optional[List[int]] = field(default_factory=lambda: list(range(5)))
@@ -140,8 +144,10 @@ def run_kmeans_clustering(cfg: KMeansClusteringConfig) -> Dict[str, Any]:
 
 def init_kmeans_clustering() :
     # ===== 나머지 파라미터 (원하면 여기서만 수정) ===== :contentReference[oaicite:3]{index=3}
+    OUTPUT_DIR   = Path(OUTPUT_FILE_LOCATION).resolve()
+
     cfg = KMeansClusteringConfig(
-        data_folder=data_folder,
+        data_folder=DATA_FILE_LOCATION,
         dates=dates,
         feature_cols=feature_cols,
         lower_q=0.01,
@@ -152,7 +158,7 @@ def init_kmeans_clustering() :
         k_max=5,
         n_init=200,
         corr_drop_mode="baseline",
-        output_root="kmeans_outputs",
+        output_root=OUTPUT_DIR / "kmeans_outputs",
         save_per_date=True,
         make_plots=True,
         stability_seeds=list(range(5)),

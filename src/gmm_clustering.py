@@ -12,7 +12,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
+# from config import DATA_FILE_LOCATION, INPUT_FILE_LOCATION, OUTPUT_FILE_LOCATION
+from config import DEFAULT_GMM_RESULTS_NAME, DEFAULT_DATA_DIR_NAME
 from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, K_RANGE
 from config import MIN_CLUSTER_FRAC
 from config import (
@@ -485,7 +486,7 @@ class GMM:
     """엔트리에서 스냅샷 변환 후 파이프라인을 실행하는 얇은 래퍼."""
 
     def __init__(self, df: pd.DataFrame | None = None, results_dir: Path | None = None):
-        self.results_dir = results_dir or Path(DEFAULT_RESULTS_DIR_NAME)
+        self.results_dir = results_dir or Path(DEFAULT_GMM_RESULTS_NAME)
         self.results_dir.mkdir(parents=True, exist_ok=True)
         self.load_stats: Dict | None = None
 

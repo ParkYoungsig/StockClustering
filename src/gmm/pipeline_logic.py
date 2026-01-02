@@ -12,20 +12,20 @@ import numpy as np
 import pandas as pd
 from sklearn.mixture import GaussianMixture
 
-from config import DEFAULT_RESULTS_DIR_NAME, DEFAULT_DATA_DIR_NAME
-from config import SNAPSHOT_FREQ, START_YEAR, END_YEAR, K_RANGE
+# from config import DEFAULT_GMM_RESULTS_NAME, DEFAULT_DATA_DIR_NAME
+from config import SNAPSHOT_FREQ  #, START_YEAR, END_YEAR, K_RANGE
 # 이차 통함에서 누락확인 되어 추가 (아래 1라인만)
 from config import GMM_COVARIANCE_TYPE, GMM_N_INIT, GMM_MAX_ITER, GMM_REG_COVAR, GMM_ALIGN_METRIC
-from config import MIN_CLUSTER_FRAC
-from config import (
-    CLUSTER_NAMES,
-    CLUSTER_INTERPRETATIONS,
-    CLUSTER_COLORS,
-)
-from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST
-from config import ROBUSTNESS_WINDOW_YEARS, ROBUSTNESS_EXCLUDE_EVAL_YEAR
-from config import ROBUSTNESS_PERIOD_SLICING_ENABLED
-from config import ROBUSTNESS_ROLLING_WINDOWS_ENABLED
+# from config import MIN_CLUSTER_FRAC
+# from config import (
+#     CLUSTER_NAMES,
+#     CLUSTER_INTERPRETATIONS,
+#     CLUSTER_COLORS,
+# )
+# from config import UMAP_N_NEIGHBORS, UMAP_MIN_DIST
+# from config import ROBUSTNESS_WINDOW_YEARS, ROBUSTNESS_EXCLUDE_EVAL_YEAR
+# from config import ROBUSTNESS_PERIOD_SLICING_ENABLED
+# from config import ROBUSTNESS_ROLLING_WINDOWS_ENABLED
 
 from gmm.model import (
     align_clusters,

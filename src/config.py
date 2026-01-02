@@ -27,10 +27,10 @@ from typing import List
 # USE_CACHE = True
 
 # Logging settings
-LOG_DIRECTORY = "log"
-LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
-LOG_BACKUP_COUNT = 5
+LOG_DIRECTORY     = "log"
+LOG_LEVEL         = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_MAX_BYTES     = 10 * 1024 * 1024  # 10MB
+LOG_BACKUP_COUNT  = 5
 
 # # Data fetching settings
 # FETCH_TIMEOUT = 30  # seconds
@@ -88,19 +88,23 @@ CHART_STYLE = {
 # ------------------------------------------#
 
 # Module-level constants
-LIST_FILE_LOCATION = "./list"
-DATA_FILE_LOCATION = "../data"
-
+# LIST_FILE_LOCATION      = "./list"
+DATA_FILE_LOCATION      = r"./data"
+INPUT_FILE_LOCATION     = r"./input"
+OUTPUT_FILE_LOCATION    = r"./output"
 
 # ------------------------------------------ #
 # kmeans_clustering.py 등을 위한 config 정보   #
 # ------------------------------------------ #
 # 박영식 수정 : 설정 혹은 파라미터만 남기고 나머지는 kmeans_clustering.py 파일로 이동
 # ===== 필수 입력 (kmm_0.py에서 옮겨온 값들) ===== :contentReference[oaicite:2]{index=2}
-data_folder = (
-    # r"C:\Users\gkrry\AI-Quant\StockClustering\데이터\데이터 수집 및 전처리\data"
-    r"../data"
-)
+
+# "INPUT_FILE_LOCATION" 사용하도록 소스 수정
+# data_folder = ( 
+#     # r"C:\Users\gkrry\AI-Quant\StockClustering\데이터\데이터 수집 및 전처리\data"
+#     r"./data"
+# )
+
 dates: List[str] = [
     "2024-11-04",
     "2024-11-05",
@@ -139,9 +143,8 @@ PROJECT_ROOT = Path(".").resolve()
 # [프로젝트 경로 설정]
 # 프로젝트 루트 기준 상대 경로
 # ==========================================
-DEFAULT_RESULTS_DIR_NAME = str(PROJECT_ROOT / "output")  # 결과 저장 디렉토리
-# 박영식 : 데이터 파일 위치를 PROJECT_ROOT와 동일 레벨의 "data" 폴더로 설정
-DEFAULT_DATA_DIR_NAME = str(PROJECT_ROOT / ".." / "data")  # 데이터 소스 디렉토리
+DEFAULT_DATA_DIR_NAME    = str(DATA_FILE_LOCATION  )  # 데이터 소스 디렉토리
+DEFAULT_GMM_RESULTS_NAME = str(Path(OUTPUT_FILE_LOCATION) / "gmm_outputs")  # 결과 저장 디렉토리
 
 # ==========================================
 # [파이프라인 하이퍼파라미터 설정]
@@ -260,7 +263,7 @@ CLUSTER_COLORS = {
 DATA_FOLDER = r"./data"
 
 # 결과물이 저장될 폴더 (이미지, CSV 등)
-OUTPUT_FOLDER = r"./output"
+OUTPUT_FOLDER = r"./output/hdb_outputs"
 
 # ---------------------------------------------------------
 # [2] 분석 피처 설정 (우선순위 순서대로)

@@ -306,12 +306,24 @@ class Visualizer:
         print(cluster_info[["Label", "Count"]].to_string(index=False))
         plt.show()
 
-def report_AutoDBScan() :
+def report_AutoDBScan(proc, auto_dbscan, user_input="2024-12-30") :
     viz = Visualizer()
 
     print("=" * 60)
     print(" [StockClustering] 주식 시장 지도 (배당 vs 모멘텀)")
     print("=" * 60)
+
+    df = proc.load_snapshot(user_input)
+    if df.empty:
+        print("데이터 없음")
+    else :    
+        df_clustered, cluster_info, final_eps = auto_dbscan.run(df)
+        viz.plot(df_clustered, cluster_info, user_input, final_eps)
+
+
+if __name__ == "__main__":
+    proc = DataProcessor()
+    auto_dbscan = AutoDBSCAN()
 
     while True:
         try:
@@ -322,20 +334,10 @@ def report_AutoDBScan() :
                 break
             if "python" in user_input:
                 continue
-
-            df = proc.load_snapshot(user_input)
-            if df.empty:
-                print("데이터 없음")
-                continue
-
-            df_clustered, cluster_info, final_eps = auto_dbscan.run(df)
-            viz.plot(df_clustered, cluster_info, user_input, final_eps)
+    
+            report_AutoDBScan(user_input)
 
         except Exception as e:
             print(f"[오류] {e}")
-            traceback.print_exc()
+            traceback.print_exc()    
 
-if __name__ == "__main__":
-    proc = DataProcessor()
-    auto_dbscan = AutoDBSCAN()
-    report_AutoDBScan()
