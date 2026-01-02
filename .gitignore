@@ -5,20 +5,14 @@ data/
 *.csv
 
 # 주식 종목 stock_list는 필수
-!input/stock_list.csv
+!input/
 
 # 2. 결과물 및 로그 금지 (내 컴퓨터에서만 확인)
-kmeans_outputs/
-gmm_results/
 output/
 log/
 *.log
 
 # 3. 임시 테스트 파일 금지
-test_run.py
-test_my_gmm.py
-merged_stock_data.py
-show_hf_columns.py
 
 # 4. 파이썬 캐시 파일 (이건 기본 매너)
 __pycache__/
