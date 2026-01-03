@@ -1,7 +1,7 @@
 # Basic Module
 import argparse
 import sys
-# from datetime import datetime, timedelta
+from datetime import datetime
 
 # 데이터 수집 및 가공
 import collect_create_data
@@ -40,21 +40,23 @@ def parse_arguments():
     #     help="Stock or Index Name, default: KOSPI200",
     # )
 
-    # parser.add_argument(
-    #     "--start",
-    #     "-s",
-    #     type=str,
-    #     default=(datetime.now() - timedelta(days=365 * 5)).strftime("%Y-%m-%d"),
-    #     help="Start date (YYYY-MM-DD), default: 1 year ago",
-    # )
+    parser.add_argument(
+        "--start",
+        "-s",
+        type=str,
+        # default=(datetime.now() - timedelta(days=365 * 5)).strftime("%Y-%m-%d"),
+        default="2015-01-01",
+        help="Start date (YYYY-MM-DD), default: 1 year ago",
+    )
 
-    # parser.add_argument(
-    #     "--end",
-    #     "-e",
-    #     type=str,
-    #     default=datetime.now().strftime("%Y-%m-%d"),
-    #     help="End date (YYYY-MM-DD), default: today",
-    # )
+    parser.add_argument(
+        "--end",
+        "-e",
+        type=str,
+        # default=datetime.now().strftime("%Y-%m-%d"),
+        default="2024-12-31",
+        help="End date (YYYY-MM-DD), default: today",
+    )
 
     # parser.add_argument(
     #     "--verbose", "-v", action="store_true", help="Enable verbose logging"
@@ -71,8 +73,8 @@ def main():
     # 입력받은 인자값 출력
     logger.info(f"Args Data Collect : {args.collect}")
     # logger.info(f"Args Target Index : {args.target}")
-    # logger.info(f"Args Start Day    : {args.start}")
-    # logger.info(f"Args End Day      : {args.end}")
+    logger.info(f"Args Start Day    : {args.start}")
+    logger.info(f"Args End Day      : {args.end}")
 
     # # Set logging level
     # if args.verbose:
@@ -81,8 +83,8 @@ def main():
     if args.collect:
         logger.info("Start collecting")
         try:
-            # collect_create_data.data_download(start_date=args.start, end_date=args.end)
-            collect_create_data.data_download()
+            collect_create_data.data_download(start_date=args.start, end_date=args.end)
+            # collect_create_data.data_download()
             logger.info("End   collecting")
         except Exception as e:
             logger.error(f"Data collection failed: {str(e)}", exc_info=True)

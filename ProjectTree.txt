@@ -1,363 +1,228 @@
-Data 볼륨에 대한 폴더 경로의 목록입니다.
-볼륨 일련 번호는 C67E-C6EE입니다.
-D:.
-|   .gitattributes
-|   .gitignore
-|   down.bat
-|   mkreq.bat
-|   ProjectTree.txt
-|   ptree.bat
-|   readme.md
-|   Requirements.txt
-|   run.bat
-|   
-+---git-command
-|       command-manager.txt
-|       command.txt
-|       git 사용법 요약.docx
-|       github.initial.command.txt
-|       
-+---gmm_results
-+---kmeans_outputs
-|   +---rolling_2024-11-04_to_2024-11-08_20251230_163228
-|   |   |   rolling_run_config.json
-|   |   |   
-|   |   +---pca_maps_aligned
-|   |   |       pca2d_aligned_2024-11-04.png
-|   |   |       pca2d_aligned_2024-11-05.png
-|   |   |       pca2d_aligned_2024-11-06.png
-|   |   |       pca2d_aligned_2024-11-07.png
-|   |   |       pca2d_aligned_2024-11-08.png
-|   |   |       pca3d_aligned_2024-11-04.png
-|   |   |       pca3d_aligned_2024-11-05.png
-|   |   |       pca3d_aligned_2024-11-06.png
-|   |   |       pca3d_aligned_2024-11-07.png
-|   |   |       pca3d_aligned_2024-11-08.png
-|   |   |       
-|   |   \---per_date
-|   |       +---2024-11-04
-|   |       |       elbow_2024-11-04.png
-|   |       |       silhouette_2024-11-04.png
-|   |       |       
-|   |       +---2024-11-05
-|   |       |       elbow_2024-11-05.png
-|   |       |       silhouette_2024-11-05.png
-|   |       |       
-|   |       +---2024-11-06
-|   |       |       elbow_2024-11-06.png
-|   |       |       silhouette_2024-11-06.png
-|   |       |       
-|   |       +---2024-11-07
-|   |       |       elbow_2024-11-07.png
-|   |       |       silhouette_2024-11-07.png
-|   |       |       
-|   |       \---2024-11-08
-|   |               elbow_2024-11-08.png
-|   |               silhouette_2024-11-08.png
-|   |               
-|   +---rolling_2024-11-04_to_2024-11-08_20251230_214117
-|   |   |   baseline_corr_dropped_cols.csv
-|   |   |   cluster_alignment_log.csv
-|   |   |   cluster_churn_by_date.csv
-|   |   |   cluster_labels_long.csv
-|   |   |   cluster_labels_long.parquet
-|   |   |   cluster_labels_wide.csv
-|   |   |   cluster_labels_wide.parquet
-|   |   |   cluster_labels_wide_aligned.csv
-|   |   |   cluster_transitions_long.csv
-|   |   |   rolling_meta_by_date.csv
-|   |   |   rolling_meta_by_date.parquet
-|   |   |   rolling_run_config.json
-|   |   |   rolling_stability_by_date.csv
-|   |   |   
-|   |   +---pca_maps_aligned
-|   |   |       pca2d_aligned_2024-11-04.png
-|   |   |       pca2d_aligned_2024-11-05.png
-|   |   |       pca2d_aligned_2024-11-06.png
-|   |   |       pca2d_aligned_2024-11-07.png
-|   |   |       pca2d_aligned_2024-11-08.png
-|   |   |       pca3d_aligned_2024-11-04.png
-|   |   |       pca3d_aligned_2024-11-05.png
-|   |   |       pca3d_aligned_2024-11-06.png
-|   |   |       pca3d_aligned_2024-11-07.png
-|   |   |       pca3d_aligned_2024-11-08.png
-|   |   |       
-|   |   \---per_date
-|   |       +---2024-11-04
-|   |       |       centroids_2024-11-04.csv
-|   |       |       corr_dropped_cols_2024-11-04.csv
-|   |       |       elbow_2024-11-04.png
-|   |       |       k_eval_2024-11-04.csv
-|   |       |       labels_2024-11-04.csv
-|   |       |       pca_coords_used_2024-11-04.csv
-|   |       |       pca_ev_2024-11-04.csv
-|   |       |       pca_loadings_2024-11-04.csv
-|   |       |       silhouette_2024-11-04.png
-|   |       |       stability_seed_2024-11-04.csv
-|   |       |       winsor_clip_table_2024-11-04.csv
-|   |       |       
-|   |       +---2024-11-05
-|   |       |       centroids_2024-11-05.csv
-|   |       |       corr_dropped_cols_2024-11-05.csv
-|   |       |       elbow_2024-11-05.png
-|   |       |       k_eval_2024-11-05.csv
-|   |       |       labels_2024-11-05.csv
-|   |       |       pca_coords_used_2024-11-05.csv
-|   |       |       pca_ev_2024-11-05.csv
-|   |       |       pca_loadings_2024-11-05.csv
-|   |       |       silhouette_2024-11-05.png
-|   |       |       stability_seed_2024-11-05.csv
-|   |       |       winsor_clip_table_2024-11-05.csv
-|   |       |       
-|   |       +---2024-11-06
-|   |       |       centroids_2024-11-06.csv
-|   |       |       corr_dropped_cols_2024-11-06.csv
-|   |       |       elbow_2024-11-06.png
-|   |       |       k_eval_2024-11-06.csv
-|   |       |       labels_2024-11-06.csv
-|   |       |       pca_coords_used_2024-11-06.csv
-|   |       |       pca_ev_2024-11-06.csv
-|   |       |       pca_loadings_2024-11-06.csv
-|   |       |       silhouette_2024-11-06.png
-|   |       |       stability_seed_2024-11-06.csv
-|   |       |       winsor_clip_table_2024-11-06.csv
-|   |       |       
-|   |       +---2024-11-07
-|   |       |       centroids_2024-11-07.csv
-|   |       |       corr_dropped_cols_2024-11-07.csv
-|   |       |       elbow_2024-11-07.png
-|   |       |       k_eval_2024-11-07.csv
-|   |       |       labels_2024-11-07.csv
-|   |       |       pca_coords_used_2024-11-07.csv
-|   |       |       pca_ev_2024-11-07.csv
-|   |       |       pca_loadings_2024-11-07.csv
-|   |       |       silhouette_2024-11-07.png
-|   |       |       stability_seed_2024-11-07.csv
-|   |       |       winsor_clip_table_2024-11-07.csv
-|   |       |       
-|   |       \---2024-11-08
-|   |               centroids_2024-11-08.csv
-|   |               corr_dropped_cols_2024-11-08.csv
-|   |               elbow_2024-11-08.png
-|   |               k_eval_2024-11-08.csv
-|   |               labels_2024-11-08.csv
-|   |               pca_coords_used_2024-11-08.csv
-|   |               pca_ev_2024-11-08.csv
-|   |               pca_loadings_2024-11-08.csv
-|   |               silhouette_2024-11-08.png
-|   |               stability_seed_2024-11-08.csv
-|   |               winsor_clip_table_2024-11-08.csv
-|   |               
-|   +---rolling_2024-11-04_to_2024-11-08_20251231_093953
-|   |   |   baseline_corr_dropped_cols.csv
-|   |   |   cluster_alignment_log.csv
-|   |   |   cluster_churn_by_date.csv
-|   |   |   cluster_labels_long.csv
-|   |   |   cluster_labels_long.parquet
-|   |   |   cluster_labels_wide.csv
-|   |   |   cluster_labels_wide.parquet
-|   |   |   cluster_labels_wide_aligned.csv
-|   |   |   cluster_transitions_long.csv
-|   |   |   rolling_meta_by_date.csv
-|   |   |   rolling_meta_by_date.parquet
-|   |   |   rolling_run_config.json
-|   |   |   rolling_stability_by_date.csv
-|   |   |   
-|   |   +---pca_maps_aligned
-|   |   |       pca2d_aligned_2024-11-04.png
-|   |   |       pca2d_aligned_2024-11-05.png
-|   |   |       pca2d_aligned_2024-11-06.png
-|   |   |       pca2d_aligned_2024-11-07.png
-|   |   |       pca2d_aligned_2024-11-08.png
-|   |   |       pca3d_aligned_2024-11-04.png
-|   |   |       pca3d_aligned_2024-11-05.png
-|   |   |       pca3d_aligned_2024-11-06.png
-|   |   |       pca3d_aligned_2024-11-07.png
-|   |   |       pca3d_aligned_2024-11-08.png
-|   |   |       
-|   |   \---per_date
-|   |       +---2024-11-04
-|   |       |       centroids_2024-11-04.csv
-|   |       |       corr_dropped_cols_2024-11-04.csv
-|   |       |       elbow_2024-11-04.png
-|   |       |       k_eval_2024-11-04.csv
-|   |       |       labels_2024-11-04.csv
-|   |       |       pca_coords_used_2024-11-04.csv
-|   |       |       pca_ev_2024-11-04.csv
-|   |       |       pca_loadings_2024-11-04.csv
-|   |       |       silhouette_2024-11-04.png
-|   |       |       stability_seed_2024-11-04.csv
-|   |       |       winsor_clip_table_2024-11-04.csv
-|   |       |       
-|   |       +---2024-11-05
-|   |       |       centroids_2024-11-05.csv
-|   |       |       corr_dropped_cols_2024-11-05.csv
-|   |       |       elbow_2024-11-05.png
-|   |       |       k_eval_2024-11-05.csv
-|   |       |       labels_2024-11-05.csv
-|   |       |       pca_coords_used_2024-11-05.csv
-|   |       |       pca_ev_2024-11-05.csv
-|   |       |       pca_loadings_2024-11-05.csv
-|   |       |       silhouette_2024-11-05.png
-|   |       |       stability_seed_2024-11-05.csv
-|   |       |       winsor_clip_table_2024-11-05.csv
-|   |       |       
-|   |       +---2024-11-06
-|   |       |       centroids_2024-11-06.csv
-|   |       |       corr_dropped_cols_2024-11-06.csv
-|   |       |       elbow_2024-11-06.png
-|   |       |       k_eval_2024-11-06.csv
-|   |       |       labels_2024-11-06.csv
-|   |       |       pca_coords_used_2024-11-06.csv
-|   |       |       pca_ev_2024-11-06.csv
-|   |       |       pca_loadings_2024-11-06.csv
-|   |       |       silhouette_2024-11-06.png
-|   |       |       stability_seed_2024-11-06.csv
-|   |       |       winsor_clip_table_2024-11-06.csv
-|   |       |       
-|   |       +---2024-11-07
-|   |       |       centroids_2024-11-07.csv
-|   |       |       corr_dropped_cols_2024-11-07.csv
-|   |       |       elbow_2024-11-07.png
-|   |       |       k_eval_2024-11-07.csv
-|   |       |       labels_2024-11-07.csv
-|   |       |       pca_coords_used_2024-11-07.csv
-|   |       |       pca_ev_2024-11-07.csv
-|   |       |       pca_loadings_2024-11-07.csv
-|   |       |       silhouette_2024-11-07.png
-|   |       |       stability_seed_2024-11-07.csv
-|   |       |       winsor_clip_table_2024-11-07.csv
-|   |       |       
-|   |       \---2024-11-08
-|   |               centroids_2024-11-08.csv
-|   |               corr_dropped_cols_2024-11-08.csv
-|   |               elbow_2024-11-08.png
-|   |               k_eval_2024-11-08.csv
-|   |               labels_2024-11-08.csv
-|   |               pca_coords_used_2024-11-08.csv
-|   |               pca_ev_2024-11-08.csv
-|   |               pca_loadings_2024-11-08.csv
-|   |               silhouette_2024-11-08.png
-|   |               stability_seed_2024-11-08.csv
-|   |               winsor_clip_table_2024-11-08.csv
-|   |               
-|   \---rolling_2024-12-02_to_2024-12-03_20251230_112110
-|       |   rolling_run_config.json
-|       |   
-|       +---pca_maps_aligned
-|       |       pca2d_aligned_2024-12-02.png
-|       |       pca2d_aligned_2024-12-03.png
-|       |       pca3d_aligned_2024-12-02.png
-|       |       pca3d_aligned_2024-12-03.png
-|       |       
-|       \---per_date
-|           +---2024-12-02
-|           |       elbow_2024-12-02.png
-|           |       silhouette_2024-12-02.png
-|           |       
-|           \---2024-12-03
-|                   elbow_2024-12-03.png
-|                   silhouette_2024-12-03.png
-|                   
-+---list
-|       financials.xlsx
-|       stock_delist.md
-|       stock_list.csv
-|       
-+---log
-|       StockClustering_20251231.log
-|       
-+---save
-|       requirements-old.txt
-|       
-+---src
-|   |   collect_create_data.py
-|   |   config.py
-|   |   gmm_clustering.py
-|   |   hdb_clustering.py
-|   |   kmm_clustering.py
-|   |   main.py
-|   |   readme.md
-|   |   __init__.py
-|   |   
-|   +---data
-|   |       data_readme.md
-|   |       __init__.py
-|   |       
-|   +---dbscan
-|   |   |   config.py
-|   |   |   dbscan_clustering.py
-|   |   |   
-|   |   \---__pycache__
-|   |           config.cpython-313.pyc
-|   |           
-|   +---gmm
-|   |   |   data_loader.py
-|   |   |   model.py
-|   |   |   pipeline_logic.py
-|   |   |   processer.py
-|   |   |   README.md
-|   |   |   reporter.py
-|   |   |   report_metrics.py
-|   |   |   visualizer.py
-|   |   |   __init__.py
-|   |   |   
-|   |   \---__pycache__
-|   |           config.cpython-314.pyc
-|   |           data_loader.cpython-314.pyc
-|   |           model.cpython-314.pyc
-|   |           pipeline_logic.cpython-314.pyc
-|   |           processer.cpython-314.pyc
-|   |           reporter.cpython-314.pyc
-|   |           report_metrics.cpython-314.pyc
-|   |           visualizer.cpython-314.pyc
-|   |           __init__.cpython-314.pyc
-|   |           
-|   +---hdb
-|   |       hdb_readme.md
-|   |       
-|   +---kmm
-|   |   |   kmm_align_clusters_mixed.py
-|   |   |   kmm_pca_maps_aligned.py
-|   |   |   kmm_pipeline.py
-|   |   |   KMM_README.md
-|   |   |   __init__.py
-|   |   |   
-|   |   +---samples
-|   |   |       kmm_0.py
-|   |   |       kmm_1.py
-|   |   |       kmm_1financial_mean.ipynb
-|   |   |       test.py
-|   |   |       
-|   |   \---__pycache__
-|   |           config.cpython-314.pyc
-|   |           kmm_align_clusters_mixed.cpython-314.pyc
-|   |           kmm_pca_maps_aligned.cpython-314.pyc
-|   |           kmm_pipeline.cpython-314.pyc
-|   |           __init__.cpython-314.pyc
-|   |           
-|   +---lib
-|   |   |   logging_config.py
-|   |   |   plotter.py
-|   |   |   __init__.py
-|   |   |   
-|   |   +---samples
-|   |   |       argtest.py
-|   |   |       
-|   |   \---__pycache__
-|   |           logging_config.cpython-314.pyc
-|   |           __init__.cpython-314.pyc
-|   |           
-|   +---utils
-|   |       printTree.py
-|   |       
-|   \---__pycache__
-|           collect_create_data.cpython-314.pyc
-|           config.cpython-314.pyc
-|           gmm_clustering.cpython-314.pyc
-|           hdb_clustering.cpython-314.pyc
-|           kmm_clustering.cpython-314.pyc
-|           
-\---__pycache__
-        logging_config.cpython-312.pyc
-        
+/
+├── __pycache__/
+│   └── logging_config.cpython-312.pyc
+├── data/
+├── down.bat
+├── down2now.bat
+├── git-command/
+│   ├── command-manager.txt
+│   ├── command.txt
+│   ├── git 사용법 요약.docx
+│   └── github.initial.command.txt
+├── input/
+│   ├── financials.xlsx
+│   ├── stock_delist.md
+│   └── stock_list.csv
+├── log/
+│   ├── StockClustering_20251231.log
+│   ├── StockClustering_20260102.log
+│   └── StockClustering_20260103.log
+├── mkreq.bat
+├── output/
+│   ├── gmm_outputs/
+│   │   ├── gmm_appendix/
+│   │   │   ├── gmm_artifacts/
+│   │   │   │   ├── gmm_latest_year.pkl
+│   │   │   │   ├── gmm_metadata.pkl
+│   │   │   │   └── gmm_scaler.pkl
+│   │   │   ├── gmm_cluster_members_by_year.csv
+│   │   │   ├── gmm_parallel.png
+│   │   │   ├── gmm_radar.png
+│   │   │   ├── gmm_risk_return.png
+│   │   │   ├── gmm_robustness_pairwise_ari.png
+│   │   │   └── gmm_robustness_pairwise_nmi.png
+│   │   ├── gmm_bic_curve_mean.png
+│   │   ├── gmm_cluster_boxplots.png
+│   │   ├── gmm_heatmap.png
+│   │   ├── gmm_report.md
+│   │   ├── gmm_robustness_vs_window.png
+│   │   ├── gmm_sankey.html
+│   │   ├── gmm_silhouette_curve_mean.png
+│   │   └── gmm_umap.png
+│   ├── hdb_outputs/
+│   │   ├── cluster_details_2024-12-30.csv
+│   │   ├── cluster_summary_2024-12-30.csv
+│   │   └── dbscan_market_map_2024-12-30.png
+│   └── kmeans_outputs/
+│       └── rolling_2024-11-04_to_2024-11-08_20260102_191206/
+│           ├── baseline_corr_dropped_cols.csv
+│           ├── cluster_alignment_log.csv
+│           ├── cluster_churn_by_date.csv
+│           ├── cluster_labels_long.csv
+│           ├── cluster_labels_long.parquet
+│           ├── cluster_labels_wide.csv
+│           ├── cluster_labels_wide.parquet
+│           ├── cluster_labels_wide_aligned.csv
+│           ├── cluster_transitions_long.csv
+│           ├── pca_maps_aligned/
+│           │   ├── pca2d_aligned_2024-11-04.png
+│           │   ├── pca2d_aligned_2024-11-05.png
+│           │   ├── pca2d_aligned_2024-11-06.png
+│           │   ├── pca2d_aligned_2024-11-07.png
+│           │   ├── pca2d_aligned_2024-11-08.png
+│           │   ├── pca3d_aligned_2024-11-04.png
+│           │   ├── pca3d_aligned_2024-11-05.png
+│           │   ├── pca3d_aligned_2024-11-06.png
+│           │   ├── pca3d_aligned_2024-11-07.png
+│           │   └── pca3d_aligned_2024-11-08.png
+│           ├── per_date/
+│           │   ├── 2024-11-04/
+│           │   │   ├── centroids_2024-11-04.csv
+│           │   │   ├── corr_dropped_cols_2024-11-04.csv
+│           │   │   ├── elbow_2024-11-04.png
+│           │   │   ├── k_eval_2024-11-04.csv
+│           │   │   ├── labels_2024-11-04.csv
+│           │   │   ├── pca_coords_used_2024-11-04.csv
+│           │   │   ├── pca_ev_2024-11-04.csv
+│           │   │   ├── pca_loadings_2024-11-04.csv
+│           │   │   ├── silhouette_2024-11-04.png
+│           │   │   ├── stability_seed_2024-11-04.csv
+│           │   │   └── winsor_clip_table_2024-11-04.csv
+│           │   ├── 2024-11-05/
+│           │   │   ├── centroids_2024-11-05.csv
+│           │   │   ├── corr_dropped_cols_2024-11-05.csv
+│           │   │   ├── elbow_2024-11-05.png
+│           │   │   ├── k_eval_2024-11-05.csv
+│           │   │   ├── labels_2024-11-05.csv
+│           │   │   ├── pca_coords_used_2024-11-05.csv
+│           │   │   ├── pca_ev_2024-11-05.csv
+│           │   │   ├── pca_loadings_2024-11-05.csv
+│           │   │   ├── silhouette_2024-11-05.png
+│           │   │   ├── stability_seed_2024-11-05.csv
+│           │   │   └── winsor_clip_table_2024-11-05.csv
+│           │   ├── 2024-11-06/
+│           │   │   ├── centroids_2024-11-06.csv
+│           │   │   ├── corr_dropped_cols_2024-11-06.csv
+│           │   │   ├── elbow_2024-11-06.png
+│           │   │   ├── k_eval_2024-11-06.csv
+│           │   │   ├── labels_2024-11-06.csv
+│           │   │   ├── pca_coords_used_2024-11-06.csv
+│           │   │   ├── pca_ev_2024-11-06.csv
+│           │   │   ├── pca_loadings_2024-11-06.csv
+│           │   │   ├── silhouette_2024-11-06.png
+│           │   │   ├── stability_seed_2024-11-06.csv
+│           │   │   └── winsor_clip_table_2024-11-06.csv
+│           │   ├── 2024-11-07/
+│           │   │   ├── centroids_2024-11-07.csv
+│           │   │   ├── corr_dropped_cols_2024-11-07.csv
+│           │   │   ├── elbow_2024-11-07.png
+│           │   │   ├── k_eval_2024-11-07.csv
+│           │   │   ├── labels_2024-11-07.csv
+│           │   │   ├── pca_coords_used_2024-11-07.csv
+│           │   │   ├── pca_ev_2024-11-07.csv
+│           │   │   ├── pca_loadings_2024-11-07.csv
+│           │   │   ├── silhouette_2024-11-07.png
+│           │   │   ├── stability_seed_2024-11-07.csv
+│           │   │   └── winsor_clip_table_2024-11-07.csv
+│           │   └── 2024-11-08/
+│           │       ├── centroids_2024-11-08.csv
+│           │       ├── corr_dropped_cols_2024-11-08.csv
+│           │       ├── elbow_2024-11-08.png
+│           │       ├── k_eval_2024-11-08.csv
+│           │       ├── labels_2024-11-08.csv
+│           │       ├── pca_coords_used_2024-11-08.csv
+│           │       ├── pca_ev_2024-11-08.csv
+│           │       ├── pca_loadings_2024-11-08.csv
+│           │       ├── silhouette_2024-11-08.png
+│           │       ├── stability_seed_2024-11-08.csv
+│           │       └── winsor_clip_table_2024-11-08.csv
+│           ├── rolling_meta_by_date.csv
+│           ├── rolling_meta_by_date.parquet
+│           ├── rolling_run_config.json
+│           └── rolling_stability_by_date.csv
+├── ProjectTree.txt
+├── PrrojectOverview.md
+├── ptree.bat
+├── readme.md
+├── Requirements.txt
+├── run.bat
+└── src/
+    ├── __init__.py
+    ├── __pycache__/
+    │   ├── collect_create_data.cpython-312.pyc
+    │   ├── collect_create_data.cpython-314.pyc
+    │   ├── config.cpython-312.pyc
+    │   ├── config.cpython-314.pyc
+    │   ├── gmm_clustering.cpython-312.pyc
+    │   ├── gmm_clustering.cpython-314.pyc
+    │   ├── hdb_clustering.cpython-312.pyc
+    │   ├── hdb_clustering.cpython-314.pyc
+    │   ├── kmm_clustering.cpython-312.pyc
+    │   └── kmm_clustering.cpython-314.pyc
+    ├── collect_create_data.py
+    ├── config.py
+    ├── gmm/
+    │   ├── __init__.py
+    │   ├── __pycache__/
+    │   │   ├── __init__.cpython-312.pyc
+    │   │   ├── __init__.cpython-314.pyc
+    │   │   ├── config.cpython-314.pyc
+    │   │   ├── data_loader.cpython-312.pyc
+    │   │   ├── data_loader.cpython-314.pyc
+    │   │   ├── model.cpython-312.pyc
+    │   │   ├── model.cpython-314.pyc
+    │   │   ├── pipeline_logic.cpython-312.pyc
+    │   │   ├── pipeline_logic.cpython-314.pyc
+    │   │   ├── processer.cpython-312.pyc
+    │   │   ├── processer.cpython-314.pyc
+    │   │   ├── report_metrics.cpython-312.pyc
+    │   │   ├── report_metrics.cpython-314.pyc
+    │   │   ├── reporter.cpython-312.pyc
+    │   │   ├── reporter.cpython-314.pyc
+    │   │   ├── robustness.cpython-312.pyc
+    │   │   ├── robustness.cpython-314.pyc
+    │   │   ├── visualizer.cpython-312.pyc
+    │   │   └── visualizer.cpython-314.pyc
+    │   ├── data_loader.py
+    │   ├── model.py
+    │   ├── pipeline_logic.py
+    │   ├── processer.py
+    │   ├── README.md
+    │   ├── report_metrics.py
+    │   ├── reporter.py
+    │   ├── robustness.py
+    │   └── visualizer.py
+    ├── gmm_clustering.py
+    ├── hdb/
+    │   └── hdb_readme.md
+    ├── hdb_clustering.py
+    ├── kmm/
+    │   ├── __init__.py
+    │   ├── __pycache__/
+    │   │   ├── __init__.cpython-312.pyc
+    │   │   ├── __init__.cpython-314.pyc
+    │   │   ├── config.cpython-314.pyc
+    │   │   ├── kmm_align_clusters_mixed.cpython-312.pyc
+    │   │   ├── kmm_align_clusters_mixed.cpython-314.pyc
+    │   │   ├── kmm_pca_maps_aligned.cpython-312.pyc
+    │   │   ├── kmm_pca_maps_aligned.cpython-314.pyc
+    │   │   ├── kmm_pipeline.cpython-312.pyc
+    │   │   └── kmm_pipeline.cpython-314.pyc
+    │   ├── kmm_align_clusters_mixed.py
+    │   ├── kmm_pca_maps_aligned.py
+    │   ├── kmm_pipeline.py
+    │   ├── KMM_README.md
+    │   └── samples/
+    │       ├── kmm_0.py
+    │       ├── kmm_1.py
+    │       ├── kmm_1financial_mean.ipynb
+    │       └── test.py
+    ├── kmm_clustering.py
+    ├── lib/
+    │   ├── __init__.py
+    │   ├── __pycache__/
+    │   │   ├── __init__.cpython-312.pyc
+    │   │   ├── __init__.cpython-314.pyc
+    │   │   ├── logging_config.cpython-312.pyc
+    │   │   └── logging_config.cpython-314.pyc
+    │   ├── logging_config.py
+    │   ├── plotter.py
+    │   └── samples/
+    │       └── argtest.py
+    ├── load_data/
+    │   ├── __init__.py
+    │   └── data_readme.md
+    ├── main.py
+    ├── readme.md
+    └── utils/
+        └── printTree.py

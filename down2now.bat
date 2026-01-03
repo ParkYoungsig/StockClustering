@@ -1,0 +1,1 @@
+python .\src\main.py --collect True --end 2025-12-31
