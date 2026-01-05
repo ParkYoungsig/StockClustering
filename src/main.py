@@ -111,9 +111,10 @@ def main():
             logger.info("End   GMM clustering")
 
             logger.info("Start HDBScan clustering")
-            hdbscan = AutoDBSCAN(df)
-            hdbscan_report = hdbscan.run()
-            logger.info("End   HDBScan clustering")
+            proc = DataProcessor()
+            auto_dbscan = AutoDBSCAN()
+            report_AutoDBScan(proc=proc, auto_dbscan=auto_dbscan)
+            logger.info("End HDBScan clustering")
 
 
             # logger.info("Start generating report ")
