@@ -294,8 +294,15 @@ MIN_SAMPLES = 3
 # ---------------------------------------------------------
 # [4] 시각화 설정
 # ---------------------------------------------------------
-# 한글 폰트 (Windows: 'Malgun Gothic', Mac: 'AppleGothic')
-FONT_FAMILY = 'Malgun Gothic'
+# 한글 폰트 (Windows: 'Malgun Gothic', Mac: 'AppleGothic', Linux: 'NanumGothic')
+import platform
+_os = platform.system()
+if _os == "Windows":
+    FONT_FAMILY = 'Malgun Gothic'
+elif _os == "Darwin":
+    FONT_FAMILY = 'AppleGothic'
+else:
+    FONT_FAMILY = 'NanumGothic'
 
 # 그래프 크기 (가로, 세로)
 FIG_SIZE = (14, 10)
